@@ -71,10 +71,12 @@ class _DialerBottomSheetState extends State<DialerBottomSheet> {
     );
 
     // Wait for user to see UI
-    await Future.delayed(const Duration(seconds: 2));
+    // await Future.delayed(const Duration(seconds: 2));
 
     // Then make actual call
     await FlutterDirectCall.makeDirectCall(number);
+
+
   }
 
 
@@ -88,6 +90,7 @@ class _DialerBottomSheetState extends State<DialerBottomSheet> {
       print("Permission denied");
       const SnackBar(content: Text('Could not make the call'));
     }
+    Navigator.pop(context);
     // final uri = Uri(scheme: 'tel', path: _phoneNumber);
     // if (await canLaunchUrl(uri)) {
     //   await launchUrl(uri);

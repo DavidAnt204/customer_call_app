@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import '../services/logout.dart';
 import '../widgets/custom_dialer.dart';
 import 'auth_screen.dart';
 
 import 'call_dialer.dart';
 import 'call_history.dart';
 import 'contacts_screen.dart';
+import 'dashboard_screen.dart';
+import 'leads_screen.dart';
 import 'profile.dart';
 
 class HomePage extends StatefulWidget {
@@ -18,7 +21,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
-  final List<String> _tabTitles = ['Recent', 'Contacts', 'Profile'];
+  final List<String> _tabTitles = ['Dashboard','Recent', '', 'Profile'];
   late final List<Widget> _pages;
 
   @override
@@ -26,19 +29,20 @@ class _HomePageState extends State<HomePage> {
     super.initState();
 
     _pages = [
+      DashboardScreen(),
       CallHistoryPage(),
-      ContactListPage(),
-      // CallDialerPage(),
-      ProfilePage(email: widget.email, onLogout: _logout),
+      LeadsPage(),
+      ProfilePage(onLogout: _logout),
     ];
   }
 
   void _logout() {
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => AuthScreen()),
-      (route) => false,
-    );
+    logout(context);
+    // Navigator.pushAndRemoveUntil(
+    //   context,
+    //   MaterialPageRoute(builder: (_) => AuthScreen()),
+    //   (route) => false,
+    // );
   }
 
   void _onItemTapped(int index) {
@@ -48,7 +52,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _selectedIndex != 2
+      appBar: _selectedIndex == 1
           ? AppBar(
               title: Text(
                 _tabTitles[_selectedIndex],
@@ -65,25 +69,26 @@ class _HomePageState extends State<HomePage> {
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
         items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), label: "Dashboard"),
           BottomNavigationBarItem(icon: Icon(Icons.access_time), label: "Recent"),
-          BottomNavigationBarItem(icon: Icon(Icons.recent_actors), label: "Contacts"),
+          BottomNavigationBarItem(icon: Icon(Icons.recent_actors), label: "Leads"),
           // BottomNavigationBarItem(icon: Icon(Icons.dialpad), label: "Keypad"),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.white,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          builder: (_) => const DialerBottomSheet(),
-        ),
-        backgroundColor: Colors.grey[300],
-        child: Icon(Icons.dialpad),
-      ),
+      // floatingActionButton: FloatingActionButton(
+      //   onPressed: () => showModalBottomSheet(
+      //     context: context,
+      //     isScrollControlled: true,
+      //     backgroundColor: Colors.white,
+      //     shape: const RoundedRectangleBorder(
+      //       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      //     ),
+      //     builder: (_) => const DialerBottomSheet(),
+      //   ),
+      //   backgroundColor: Colors.grey[300],
+      //   child: Icon(Icons.dialpad),
+      // ),
       // floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }

@@ -22,7 +22,7 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     return showLogin
-        ? LoginPage(onToggle: toggleScreen)
+        ? ModernLoginPage(onToggle: toggleScreen)
         : SignupPage(onToggle: toggleScreen);
   }
 }
