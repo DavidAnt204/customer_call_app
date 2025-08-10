@@ -27,6 +27,7 @@ class _LeadsPageState extends State<LeadsPage> {
   String? _currentCallLeadId;
   String? _currentCallNumber;
   final Color primaryColor = const Color(0xFF4169E1); // #4169E1
+  bool _isRefreshing = false;
 
   @override
   void initState() {
@@ -38,8 +39,7 @@ class _LeadsPageState extends State<LeadsPage> {
       _onPhoneStateEvent(event);
     });
 
-    leadsFuture = fetchLeads();
-    statusFuture = fetchStatuses();
+    _refresh();
   }
 
   void _onPhoneStateEvent(event) async {
@@ -120,9 +120,21 @@ class _LeadsPageState extends State<LeadsPage> {
     throw Exception('Failed to load statuses');
   }
 
-  void _loadData() {
+  Future<void> _loadData() async {
+    setState(() {
+      _isRefreshing = true;
+    });
+
+    // Replace these with actual fetch methods
     leadsFuture = fetchLeads();
     statusFuture = fetchStatuses();
+
+    // Wait for both futures to complete
+    await Future.wait([leadsFuture, statusFuture]);
+
+    setState(() {
+      _isRefreshing = false;
+    });
   }
 
   Future<void> _refresh() async {
@@ -213,80 +225,6 @@ class _LeadsPageState extends State<LeadsPage> {
     _currentCallLeadId = leadId;
 
     await FlutterDirectCall.makeDirectCall(phone);
-
-    // try {
-    //
-    //   // Get call logs before call WITHOUT filter for more accuracy
-    //   Iterable<CallLogEntry> logsBefore = await CallLog.query();
-    //
-    //   // Make the call (fire and forget)
-    //   await FlutterDirectCall.makeDirectCall(phone);
-    //
-    //   // Wait longer to allow logs to update
-    //   // await Future.delayed(const Duration(seconds: 10));
-    //
-    //   // Get call logs after call
-    //   Iterable<CallLogEntry> logsAfter = await CallLog.query();
-    //
-    //   _loadCallLogs(logsAfter);
-    //
-    //   // Find the newest call log entry for the called number that wasn't before
-    //   // CallLogEntry? newEntry;
-    //   //
-    //   // // Sort logsAfter by timestamp descending (most recent first)
-    //   // var sortedLogs = logsAfter.toList()
-    //   //   ..sort((a, b) => b.timestamp!.compareTo(a.timestamp!));
-    //   //
-    //   // for (var entry in sortedLogs) {
-    //   //   if (entry.number == phone) {
-    //   //     bool isNew = !logsBefore.any((b) => b.timestamp == entry.timestamp && b.number == entry.number);
-    //   //     if (isNew) {
-    //   //       newEntry = entry;
-    //   //       break;
-    //   //     }
-    //   //   }
-    //   // }
-    //
-    //   // if (newEntry == null) {
-    //   //   print('No new call log entry found for $phone');
-    //   //   ScaffoldMessenger.of(context).showSnackBar(
-    //   //     const SnackBar(content: Text('Call ended but no log entry found')),
-    //   //   );
-    //   //   return;
-    //   // }
-    //   //
-    //   // print('Call log entry after call: $newEntry');
-    //
-    //   // Then continue your saving call history logic...
-    //   final box = Hive.box('myBox');
-    //   final dynamic rawData = box.get('staffinfo');
-    //   final Map<String, dynamic> staffInfo = rawData is String
-    //       ? Map<String, dynamic>.from(jsonDecode(rawData))
-    //       : Map<String, dynamic>.from(rawData);
-    //
-    //   final staffId = staffInfo['staffid'] ?? '';
-    //
-    //   // Compose summary from call log details
-    //   // final callHistoryMap = callLogEntryToJson(newEntry);
-    //
-    //   // final success = await saveCallHistory(
-    //   //   staffId: staffId,
-    //   //   leadId: leadId,
-    //   //   callHistory: callHistoryMap,
-    //   // );
-    //
-    //   // ScaffoldMessenger.of(context).showSnackBar(
-    //   //   SnackBar(
-    //   //       content: Text(
-    //   //           success ? 'Call history saved' : 'Failed to save history')),
-    //   // );
-    //
-    // } catch (e) {
-    //   print('Error during call or call log fetch: $e');
-    //   ScaffoldMessenger.of(context).showSnackBar(
-    //     SnackBar(content: Text('Error saving call history')),
-    //   );
-    // }
   }
 
   Future<bool?> confirmStatusChange(String newStatus) {
@@ -365,7 +303,10 @@ class _LeadsPageState extends State<LeadsPage> {
                 print('Add lead button tapped');
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => AddLeadScreen()),
+                  MaterialPageRoute(
+                      builder: (context) => AddLeadScreen(
+                            leadId: '--', // Pass the lead ID to AddLeadScreen
+                          )),
                 );
               },
               child: Container(
@@ -375,14 +316,16 @@ class _LeadsPageState extends State<LeadsPage> {
                   border: Border.all(color: primaryColor),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2), // shadow color with opacity
+                      color: Colors.black
+                          .withOpacity(0.2), // shadow color with opacity
                       spreadRadius: 1, // how much the shadow spreads
-                      blurRadius: 2,   // blur effect
+                      blurRadius: 2, // blur effect
                       offset: const Offset(0, 1), // shadow position (x, y)
                     ),
                   ],
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -423,218 +366,281 @@ class _LeadsPageState extends State<LeadsPage> {
 
           return RefreshIndicator(
               onRefresh: _refresh,
-              child: ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: leads.length,
-                separatorBuilder: (i, _) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final lead = leads[index];
-                  final color = _getStatusColor(lead.statusName);
-
-                  return Card(
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    elevation: 3,
-                    child: Padding(
+              child: _isRefreshing
+                  ? Center(child: CircularProgressIndicator())
+                  : ListView.separated(
                       padding: const EdgeInsets.all(16),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Avatar Icon
-                          Container(
-                            width: 50,
-                            height: 50,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                colors: [Color(0xFF4169E1), Color(0xFF4A90E2)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                            ),
-                            alignment: Alignment.center,
-                            child: const Icon(Icons.person,
-                                color: Colors.white, size: 28),
-                          ),
-                          const SizedBox(width: 16),
+                      itemCount: leads.length,
+                      separatorBuilder: (i, _) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final lead = leads[index];
+                        final color = _getStatusColor(lead.statusName);
 
-                          // Content
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Name
-                                Text(
-                                  lead.name,
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF4169E1),
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-
-                                // Phone Row
-                                Row(
+                        return Card(
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          elevation: 3,
+                          child: Stack(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Icon(Icons.phone,
-                                        size: 18, color: Colors.black54),
-                                    const SizedBox(width: 6),
+                                    // Avatar Icon
+                                    Container(
+                                      width: 50,
+                                      height: 50,
+                                      decoration: const BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Color(0xFF4169E1),
+                                            Color(0xFF4A90E2)
+                                          ],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: const Icon(Icons.person,
+                                          color: Colors.white, size: 28),
+                                    ),
+                                    const SizedBox(width: 16),
+
+                                    // Content
                                     Expanded(
-                                      child: Text(
-                                        lead.phoneNumber,
-                                        style: const TextStyle(fontSize: 14),
-                                        overflow: TextOverflow.ellipsis,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          // Name
+                                          Text(
+                                            lead.name,
+                                            style: const TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF4169E1),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+
+                                          // Phone Row
+                                          Row(
+                                            children: [
+                                              const Icon(Icons.phone,
+                                                  size: 18,
+                                                  color: Colors.black54),
+                                              const SizedBox(width: 6),
+                                              Expanded(
+                                                child: Text(
+                                                  lead.phoneNumber,
+                                                  style: const TextStyle(
+                                                      fontSize: 14),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+
+                                          // Dropdown + Call button in Wrap
+                                          Wrap(
+                                            spacing: 10,
+                                            runSpacing: 12,
+                                            children: [
+                                              // Status Dropdown
+                                              LayoutBuilder(
+                                                builder:
+                                                    (context, constraints) {
+                                                  return SizedBox(
+                                                    width: constraints.maxWidth,
+                                                    child: Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 12,
+                                                          vertical: 6),
+                                                      decoration: BoxDecoration(
+                                                        color: _getStatusColor(
+                                                                lead.statusName)
+                                                            .withOpacity(0.15),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(20),
+                                                      ),
+                                                      child:
+                                                          DropdownButtonHideUnderline(
+                                                        child: DropdownButton<
+                                                            String>(
+                                                          value:
+                                                              lead.statusName,
+                                                          isDense: true,
+                                                          isExpanded: true,
+                                                          icon: const SizedBox
+                                                              .shrink(), // Hide dropdown icon
+                                                          items: statusList
+                                                              .map((status) {
+                                                            return DropdownMenuItem(
+                                                              value:
+                                                                  status.name,
+                                                              child: Row(
+                                                                children: [
+                                                                  Icon(
+                                                                    _getStatusIcon(
+                                                                        status
+                                                                            .name),
+                                                                    size: 16,
+                                                                    color: _getStatusColor(
+                                                                        status
+                                                                            .name),
+                                                                  ),
+                                                                  const SizedBox(
+                                                                      width: 6),
+                                                                  Text(
+                                                                    status.name,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      color: _getStatusColor(
+                                                                          status
+                                                                              .name),
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            );
+                                                          }).toList(),
+                                                          onChanged:
+                                                              (selected) async {
+                                                            if (selected ==
+                                                                    null ||
+                                                                selected ==
+                                                                    lead.statusName)
+                                                              return;
+                                                            final confirm =
+                                                                await confirmStatusChange(
+                                                                    selected);
+                                                            if (confirm != true)
+                                                              return;
+
+                                                            final statusObj =
+                                                                statusList
+                                                                    .firstWhere((s) =>
+                                                                        s.name ==
+                                                                        selected);
+                                                            final success =
+                                                                await updateLeadStatus(
+                                                                    lead.id,
+                                                                    statusObj
+                                                                        .id);
+
+                                                            if (success) {
+                                                              setState(() {
+                                                                lead.statusName =
+                                                                    selected;
+                                                                lead.statusId =
+                                                                    statusObj
+                                                                        .id;
+                                                              });
+                                                              ScaffoldMessenger
+                                                                      .of(context)
+                                                                  .showSnackBar(
+                                                                SnackBar(
+                                                                    content: Text(
+                                                                        'Status updated to "$selected"')),
+                                                              );
+                                                            } else {
+                                                              ScaffoldMessenger
+                                                                      .of(context)
+                                                                  .showSnackBar(
+                                                                const SnackBar(
+                                                                    content: Text(
+                                                                        'Failed to update status')),
+                                                              );
+                                                            }
+                                                          },
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+
+                                              // Call Button
+                                              LayoutBuilder(
+                                                builder:
+                                                    (context, constraints) {
+                                                  return SizedBox(
+                                                    width: constraints.maxWidth,
+                                                    child: ElevatedButton.icon(
+                                                      onPressed: () => makeCall(
+                                                          lead.phoneNumber,
+                                                          lead.statusName,
+                                                          lead.id),
+                                                      icon: const Icon(
+                                                          Icons.call),
+                                                      label: const Text('Call'),
+                                                      style: ElevatedButton
+                                                          .styleFrom(
+                                                        backgroundColor:
+                                                            Colors.green,
+                                                        foregroundColor:
+                                                            Colors.white,
+                                                        fixedSize: const Size
+                                                            .fromHeight(38),
+                                                        shape:
+                                                            RoundedRectangleBorder(
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(30),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                            ],
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 12),
+                              ),
 
-                                // Dropdown + Call button in Wrap
-                                Wrap(
-                                  spacing: 10,
-                                  runSpacing: 12,
-                                  children: [
-                                    // Status Dropdown (100% width)
-                                    LayoutBuilder(
-                                      builder: (context, constraints) {
-                                        return SizedBox(
-                                          width: constraints.maxWidth,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 12, vertical: 6),
-                                            decoration: BoxDecoration(
-                                              color: _getStatusColor(
-                                                      lead.statusName)
-                                                  .withOpacity(0.15),
-                                              borderRadius:
-                                                  BorderRadius.circular(20),
-                                            ),
-                                            child: DropdownButtonHideUnderline(
-                                              child: DropdownButton<String>(
-                                                value: lead.statusName,
-                                                isDense: true,
-                                                isExpanded: true,
-                                                icon: const SizedBox
-                                                    .shrink(), // Hide dropdown icon
-                                                items: statusList.map((status) {
-                                                  return DropdownMenuItem(
-                                                    value: status.name,
-                                                    child: Row(
-                                                      children: [
-                                                        Icon(
-                                                          _getStatusIcon(
-                                                              status.name),
-                                                          size: 16,
-                                                          color:
-                                                              _getStatusColor(
-                                                                  status.name),
-                                                        ),
-                                                        const SizedBox(
-                                                            width: 6),
-                                                        Text(
-                                                          status.name,
-                                                          style: TextStyle(
-                                                            color:
-                                                                _getStatusColor(
-                                                                    status
-                                                                        .name),
-                                                            fontWeight:
-                                                                FontWeight.w600,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  );
-                                                }).toList(),
-                                                onChanged: (selected) async {
-                                                  if (selected == null ||
-                                                      selected ==
-                                                          lead.statusName)
-                                                    return;
-                                                  final confirm =
-                                                      await confirmStatusChange(
-                                                          selected);
-                                                  if (confirm != true) return;
-
-                                                  final statusObj = statusList
-                                                      .firstWhere((s) =>
-                                                          s.name == selected);
-                                                  final success =
-                                                      await updateLeadStatus(
-                                                          lead.id,
-                                                          statusObj.id);
-
-                                                  if (success) {
-                                                    setState(() {
-                                                      lead.statusName =
-                                                          selected;
-                                                      lead.statusId =
-                                                          statusObj.id;
-                                                    });
-                                                    ScaffoldMessenger.of(
-                                                            context)
-                                                        .showSnackBar(
-                                                      SnackBar(
-                                                          content: Text(
-                                                              'Status updated to "$selected"')),
-                                                    );
-                                                  } else {
-                                                    ScaffoldMessenger.of(
-                                                            context)
-                                                        .showSnackBar(
-                                                      const SnackBar(
-                                                          content: Text(
-                                                              'Failed to update status')),
-                                                    );
-                                                  }
-                                                },
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-
-                                    // Call Button (100% width)
-                                    LayoutBuilder(
-                                      builder: (context, constraints) {
-                                        return SizedBox(
-                                          width: constraints.maxWidth,
-                                          child: ElevatedButton.icon(
-                                            onPressed: () => makeCall(
-                                                lead.phoneNumber,
-                                                lead.statusName,
-                                                lead.id),
-                                            icon: const Icon(Icons.call),
-                                            label: const Text('Call'),
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.green,
-                                              foregroundColor: Colors.white,
-                                              fixedSize:
-                                                  const Size.fromHeight(38),
-                                              // padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(30),
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ],
+                              // Edit Icon in the top-right corner
+                              Positioned(
+                                top: 4,
+                                right: 4,
+                                child: IconButton(
+                                  icon: Icon(
+                                    Icons.edit,
+                                    color: primaryColor,
+                                    size: 20,
+                                  ),
+                                  onPressed: () {
+                                    // Handle the edit action
+                                    print("Edit icon pressed");
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => AddLeadScreen(
+                                          leadId: lead
+                                              .id, // Pass the lead ID to AddLeadScreen
+                                        ),
+                                      ),
+                                    );
+                                  },
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ));
+                        );
+                      },
+                    ));
         },
       ),
     );

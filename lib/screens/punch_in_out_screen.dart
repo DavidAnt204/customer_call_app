@@ -1,15 +1,23 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import 'package:location/location.dart' as loc;
 import 'package:image_picker/image_picker.dart';
 import 'package:crop_your_image/crop_your_image.dart';
+import 'package:image/image.dart' as img;
+import 'package:mime/mime.dart';
+import 'package:path_provider/path_provider.dart';
+
+import '../services/api_services.dart';
 
 class PunchInOutScreen extends StatefulWidget {
   final bool isPunchIn;
@@ -25,6 +33,8 @@ class _PunchInOutScreenState extends State<PunchInOutScreen> {
   String currentDate = '';
   String currentLocation = 'Fetching location...';
   CameraController? _cameraController;
+  bool _isLoading = false;
+  bool _isTodayCompleted = false; // when both punch in & out done
 
   Timer? _timer;
 
@@ -40,12 +50,30 @@ class _PunchInOutScreenState extends State<PunchInOutScreen> {
     _updateDateTime();
     _getLocation();
     _startClock();
+    _checkPunchStatus();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _checkPunchStatus() async {
+    final box = Hive.box('myBox');
+    final punchData = box.get('punchStatus');
+    // Example format stored in Hive:
+    // { "2025-08-10": {"punchIn": true, "punchOut": true} }
+
+    final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    if (punchData != null && punchData[todayKey] != null) {
+      bool inDone = punchData[todayKey]['punchIn'] ?? false;
+      bool outDone = punchData[todayKey]['punchOut'] ?? false;
+      setState(() {
+        _isTodayCompleted = inDone && outDone;
+      });
+    }
   }
 
   void _startClock() {
@@ -87,7 +115,8 @@ class _PunchInOutScreenState extends State<PunchInOutScreen> {
 
       setState(() {
         currentLocation =
-        '${place.subLocality}, ${place.locality} – ${place.postalCode}';
+        '${place.thoroughfare} ${place.subLocality}, ${place.locality} – ${place.postalCode}';
+        print('current location ${place.name} ${place.postalCode} ${place.administrativeArea}');
       });
     } catch (e) {
       setState(() {
@@ -106,6 +135,58 @@ class _PunchInOutScreenState extends State<PunchInOutScreen> {
     setState(() {});
   }
 
+  Future<Uint8List> _compressToMaxSize(Uint8List imageBytes, int maxBytes) async {
+    int quality = 90;
+    Uint8List compressed = imageBytes;
+
+    // Reduce quality until under limit
+    while (compressed.lengthInBytes > maxBytes && quality > 10) {
+      compressed = await FlutterImageCompress.compressWithList(
+        compressed,
+        quality: quality,
+        format: CompressFormat.jpeg, // Force JPG
+      );
+      quality -= 10;
+    }
+    return compressed;
+  }
+
+  // Convert any image bytes -> JPEG bytes and compress/resize until under maxBytes
+  Future<Uint8List> _convertAndCompressToJpg(Uint8List inputBytes, int maxBytes) async {
+    // decode (auto-detect format)
+    final decoded = img.decodeImage(inputBytes);
+    if (decoded == null) {
+      throw Exception('Could not decode image bytes');
+    }
+
+    // start with original (but limit max dimension to avoid huge images)
+    img.Image working = decoded;
+    const int maxDimension = 2000;
+    if (working.width > maxDimension || working.height > maxDimension) {
+      working = img.copyResize(working, width: maxDimension);
+    }
+
+    // Try encoding with decreasing quality
+    int quality = 95;
+    Uint8List jpg = Uint8List.fromList(img.encodeJpg(working, quality: quality));
+
+    while (jpg.lengthInBytes > maxBytes && quality > 10) {
+      quality -= 10;
+      jpg = Uint8List.fromList(img.encodeJpg(working, quality: quality));
+    }
+
+    // If still too large, progressively downscale until fits
+    int currentWidth = working.width;
+    int currentHeight = working.height;
+    while (jpg.lengthInBytes > maxBytes && (currentWidth > 200 || currentHeight > 200)) {
+      currentWidth = (currentWidth * 0.85).round();
+      currentHeight = (currentHeight * 0.85).round();
+      working = img.copyResize(working, width: currentWidth, height: currentHeight);
+      jpg = Uint8List.fromList(img.encodeJpg(working, quality: quality));
+    }
+
+    return jpg;
+  }
 
   Future<void> _pickImage() async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
@@ -136,12 +217,36 @@ class _PunchInOutScreenState extends State<PunchInOutScreen> {
                 image: _originalImageBytes!,
                 controller: _cropController,
                 aspectRatio: 1,
-                onCropped: (Uint8List croppedBytes) {
-                  setState(() {
-                    _croppedImageBytes = croppedBytes;
-                    _imageFile = null;
-                  });
-                  Navigator.of(context).pop();
+                onCropped: (Uint8List croppedBytes) async {
+                  try {
+                    // Convert+compress to JPEG under 2MB
+                    final Uint8List jpegBytes = await _convertAndCompressToJpg(
+                      croppedBytes,
+                      2 * 1024 * 1024,
+                    );
+
+                    // Save to temp file with .jpg extension (so server-side extension checks pass)
+                    final dir = await getTemporaryDirectory();
+                    final filePath = '${dir.path}/selfie_${DateTime.now().millisecondsSinceEpoch}.jpg';
+                    final File jpgFile = File(filePath);
+                    await jpgFile.writeAsBytes(jpegBytes);
+
+                    // Optionally check mime
+                    final mimeType = lookupMimeType(jpgFile.path, headerBytes: jpegBytes);
+                    debugPrint('Saved file: $filePath, mime: $mimeType, size: ${jpegBytes.lengthInBytes}');
+
+                    setState(() {
+                      _croppedImageBytes = jpegBytes;
+                      _imageFile = jpgFile; // if you keep this field
+                    });
+                  } catch (e) {
+                    debugPrint('Image conversion failed: $e');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to process image: $e')),
+                    );
+                  } finally {
+                    if (mounted) Navigator.of(context).pop();
+                  }
                 },
               ),
             ),
@@ -169,7 +274,15 @@ class _PunchInOutScreenState extends State<PunchInOutScreen> {
     });
   }
 
-  void _handlePunchInOut() {
+  Future<void> _handlePunchInOut() async {
+    final box = Hive.box('myBox');
+    final dynamic rawData = box.get('staffinfo');
+    final Map<String, dynamic> staffInfo = rawData is String
+        ? Map<String, dynamic>.from(jsonDecode(rawData))
+        : Map<String, dynamic>.from(rawData);
+
+    print(staffInfo);
+
     if (_croppedImageBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -180,17 +293,47 @@ class _PunchInOutScreenState extends State<PunchInOutScreen> {
       return;
     }
 
-    final DateTime punchTime = DateTime.now();
+    setState(() => _isLoading = true); // 🔹 Show loader
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(widget.isPunchIn
-            ? 'Punched In successfully!'
-            : 'Punched Out successfully!'),
-      ),
+    final result = widget.isPunchIn ? await PunchService.punchIn(
+      userId: staffInfo["staffid"],
+      location: currentLocation,
+      imageBytes: _croppedImageBytes!,
+    ) : await PunchService.punchOut(
+    userId: staffInfo["staffid"],
+    location: currentLocation,
+    imageBytes: _croppedImageBytes!,
     );
 
-    Navigator.pop(context, punchTime); // return punch time to dashboard
+    setState(() => _isLoading = false); // 🔹 Hide loader
+
+    if (!mounted) return;
+
+    final body = jsonDecode(result['body']);
+
+    if (result['statusCode'] == 200 && body['message'] != null) {
+      final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final box = Hive.box('myBox');
+      Map<String, dynamic> punchData = box.get('punchStatus', defaultValue: {}) as Map<String, dynamic>;
+
+      punchData[todayKey] ??= {"punchIn": false, "punchOut": false};
+      if (widget.isPunchIn) {
+        punchData[todayKey]['punchIn'] = true;
+      } else {
+        punchData[todayKey]['punchOut'] = true;
+      }
+
+      box.put('punchStatus', punchData);
+
+      setState(() {
+        _isTodayCompleted = punchData[todayKey]['punchIn'] && punchData[todayKey]['punchOut'];
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(body['message'])),
+      );
+      Navigator.pop(context, DateTime.now());
+    }
   }
 
   Widget _buildGlassIconButton({
@@ -291,95 +434,118 @@ class _PunchInOutScreenState extends State<PunchInOutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Punch In / Out",
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-        leading: IconButton(
-          icon: const Icon(Icons.chevron_left),
-          iconSize: 32,
-          onPressed: () => Navigator.pop(context),
-          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-          padding: const EdgeInsets.all(8),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        foregroundColor: Colors.black,
-        titleSpacing: 0,
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Card(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 4,
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("Date: $currentDate",
-                                style: TextStyle(
-                                    fontSize: 16, fontWeight: FontWeight.w500)),
-                            SizedBox(height: 8),
-                            Text("Time: $currentTime",
-                                style: TextStyle(
-                                    fontSize: 16, fontWeight: FontWeight.w500)),
-                            SizedBox(height: 8),
-                            Text("Location: $currentLocation",
-                                style:
-                                TextStyle(fontSize: 14, color: Colors.grey[700])),
-                          ],
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: Text(
+              "Punch In / Out",
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            leading: IconButton(
+              icon: const Icon(Icons.chevron_left),
+              iconSize: 32,
+              onPressed: () => Navigator.pop(context),
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              padding: const EdgeInsets.all(8),
+            ),
+            backgroundColor: Colors.white,
+            elevation: 1,
+            foregroundColor: Colors.black,
+            titleSpacing: 0,
+          ),
+          body: SafeArea(
+            child: Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 4,
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text("Date: $currentDate",
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500)),
+                                SizedBox(height: 8),
+                                Text("Time: $currentTime",
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500)),
+                                SizedBox(height: 8),
+                                Text("Location: $currentLocation",
+                                    style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[700])),
+                              ],
+                            ),
+                          ),
                         ),
+                        SizedBox(height: 24),
+                        Text(
+                          widget.isPunchIn
+                              ? "Take Selfie to Punch In"
+                              : "Take Selfie to Punch Out",
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        SizedBox(height: 12),
+                        _buildImageSection(),
+                      ],
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: (_croppedImageBytes == null || _isTodayCompleted)
+                          ? null
+                          : _handlePunchInOut,
+                      icon: Icon(Icons.how_to_reg, color: Colors.white),
+                      label: Text(
+                        widget.isPunchIn ? "Punch In" : "Punch Out",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: widget.isPunchIn
+                            ? Colors.deepPurple
+                            : Colors.red,
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                     ),
-                    SizedBox(height: 24),
-                    Text(
-                      widget.isPunchIn
-                          ? "Take Selfie to Punch In"
-                          : "Take Selfie to Punch Out",
-                      style:
-                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: 12),
-                    _buildImageSection(),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed:
-                  _croppedImageBytes == null ? null : _handlePunchInOut,
-                  icon: Icon(Icons.how_to_reg, color: Colors.white),
-                  label: Text(
-                    widget.isPunchIn ? "Punch In" : "Punch Out",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                    widget.isPunchIn ? Colors.deepPurple : Colors.red,
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    textStyle:
-                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+
+        // 🔹 Loader overlay
+        if (_isLoading)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black45,
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
