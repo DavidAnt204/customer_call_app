@@ -22,23 +22,53 @@ Map<String, dynamic> callLogEntryToJson(CallLogEntry entry) {
 Future<bool> saveCallHistory({
   required String staffId,
   required String leadId,
+  required Map<String, dynamic> formData,
   required Map<String, dynamic> callHistory,
 }) async {
   try {
+    String farmerName = formData["farmerName"];
+    String callStatus = formData["leadCallStatus"];
+    String businessCategory = formData["businessCategory"];
+    String typePurchase = formData["typeOfPurchase"];
+    String district = formData["district"];
+    String division = formData["division"];
+    String block = formData["block"];
+    String village = formData["village"];
+    String product = formData["product"];
+    String machineName = formData["machineName"];
+    String reminderDate = formData["reminderDate"].toString();
+    String remarks = formData["remarks"];
+
     final url = Uri.parse('https://crm.vasaantham.com/api/save_call_history');
     String currentDateTime = dateFormat.format(DateTime.now());
     print('API call URL: $url');
 
+    final requestBody = {
+      "staffid": int.parse(staffId),
+      "lead_id": int.parse(leadId),
+      "remarks": remarks,
+      "call_history": callHistory,
+      "lead_subsidy_name_of_the_farmer": farmerName,
+      "lead_call_status": callStatus,
+      "lead_business_category": businessCategory,
+      "lead_type_purchase": typePurchase,
+      "lead_reminder_date": reminderDate.toString(),
+      "lead_subsidy_district": district,
+      "lead_subsidy_division": division,
+      "lead_subsidy_block": block,
+      "lead_subsidy_village": village,
+      "lead_subsidy_product": product,
+      "lead_subsidy_machine_name": machineName
+    };
+
+    print('test request $requestBody');
+
     final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        "staffid": int.parse(staffId),
-        "lead_id": int.parse(leadId),
-        "call_history": callHistory,
-        // "created_at": currentDateTime,
-      }),
+      body: jsonEncode(requestBody),
     );
+
 
     print('Response status: ${response.statusCode}');
     print('Response body: ${response.body}');
@@ -246,14 +276,17 @@ class LeadService {
   }
 
   Future<List<Map<String, dynamic>>> getSources() async {
-    final response = await http.get(Uri.parse('https://crm.vasaantham.com/api/get_sources'));
+    final response =
+        await http.get(Uri.parse('https://crm.vasaantham.com/api/get_sources'));
 
     if (response.statusCode == 200) {
       List<dynamic> data = jsonDecode(response.body);
-      return data.map((item) => {
-        'id': item['id'],
-        'text': item['name'],
-      }).toList();
+      return data
+          .map((item) => {
+                'id': item['id'],
+                'text': item['name'],
+              })
+          .toList();
     } else {
       throw Exception('Failed to load sources');
     }
@@ -261,14 +294,17 @@ class LeadService {
 
   // Fetch Lead Statuses
   Future<List<Map<String, dynamic>>> getStatuses() async {
-    final response = await http.get(Uri.parse('https://crm.vasaantham.com/api/get_all_lead_statuses'));
+    final response = await http
+        .get(Uri.parse('https://crm.vasaantham.com/api/get_all_lead_statuses'));
 
     if (response.statusCode == 200) {
       List<dynamic> data = jsonDecode(response.body);
-      return data.map((item) => {
-        'id': item['id'],
-        'text': item['name'],
-      }).toList();
+      return data
+          .map((item) => {
+                'id': item['id'],
+                'text': item['name'],
+              })
+          .toList();
     } else {
       throw Exception('Failed to load statuses');
     }
@@ -322,7 +358,8 @@ class LeadService {
 
       // Send the PATCH request
       final response = await http.patch(
-        Uri.parse('${baseUrl}/update_lead/$leadId'),  // Ensure the leadId is properly inserted
+        Uri.parse(
+            '${baseUrl}/update_lead/$leadId'), // Ensure the leadId is properly inserted
         headers: {
           'Content-Type': 'application/json',
         },
@@ -342,6 +379,160 @@ class LeadService {
       // Print error details for debugging
       print('Error: $e');
       throw Exception('Error updating lead: $e');
+    }
+  }
+
+  // Fetch lead data using the leadId
+  Future<List<Map<String, String>>> getLeadDistrict() async {
+    final url = Uri.parse('$baseUrl/get_districts'); // API endpoint
+
+    try {
+      final response = await http.get(url);
+      // Check if the response is successful
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+        return data
+            .map<Map<String, String>>((item) => {
+                  "value": item["id"].toString(),
+                  "text": item["name"].toString(),
+                })
+            .toList();
+      } else {
+        // If the server returns an error, throw an exception
+        throw Exception('Failed to load district');
+      }
+    } catch (e) {
+      // Catch any error that occurs during the request
+      throw Exception('Error fetching lead district: $e');
+    }
+  }
+
+  // Fetch lead data
+  Future<List<Map<String, String>>> getLeadDivision(districtId) async {
+    final url = Uri.parse('$baseUrl/get_divisions/$districtId'); // API endpoint
+
+    try {
+      final response = await http.get(url);
+      // Check if the response is successful
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+        return data
+            .map<Map<String, String>>((item) => {
+                  "value": item["id"].toString(),
+                  "text": item["name"].toString(),
+                })
+            .toList();
+      } else {
+        // If the server returns an error, throw an exception
+        throw Exception('Failed to load district');
+      }
+    } catch (e) {
+      // Catch any error that occurs during the request
+      throw Exception('Error fetching lead district: $e');
+    }
+  }
+
+  // Fetch lead data
+  Future<List<Map<String, String>>> getLeadBlocks(
+      String districtId, String divisionId) async {
+    final url = Uri.parse(
+        '$baseUrl/get_blocks/$districtId/$divisionId'); // API endpoint
+
+    try {
+      final response = await http.get(url);
+      // Check if the response is successful
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+        return data
+            .map<Map<String, String>>((item) => {
+                  "value": item["id"].toString(),
+                  "text": item["name"].toString(),
+                })
+            .toList();
+      } else {
+        // If the server returns an error, throw an exception
+        throw Exception('Failed to load district');
+      }
+    } catch (e) {
+      // Catch any error that occurs during the request
+      throw Exception('Error fetching lead district: $e');
+    }
+  }
+
+  // Fetch lead data
+  Future<List<Map<String, String>>> getLeadVillages(
+      String districtId, String divisionId, String blockId) async {
+    final url = Uri.parse(
+        '$baseUrl/get_villages/$districtId/$divisionId/$blockId'); // API endpoint
+
+    try {
+      final response = await http.get(url);
+      // Check if the response is successful
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+        return data
+            .map<Map<String, String>>((item) => {
+          "value": item["id"].toString(),
+          "text": item["name"].toString(),
+        })
+            .toList();
+      } else {
+        // If the server returns an error, throw an exception
+        throw Exception('Failed to load district');
+      }
+    } catch (e) {
+      // Catch any error that occurs during the request
+      throw Exception('Error fetching lead district: $e');
+    }
+  }
+
+  // Fetch lead data using the leadId
+  Future<List<Map<String, String>>> getProducts() async {
+    final url = Uri.parse('$baseUrl/get_products'); // API endpoint
+
+    try {
+      final response = await http.get(url);
+      // Check if the response is successful
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+        return data
+            .map<Map<String, String>>((item) => {
+          "value": item["id"].toString(),
+          "text": item["name"].toString(),
+        })
+            .toList();
+      } else {
+        // If the server returns an error, throw an exception
+        throw Exception('Failed to load district');
+      }
+    } catch (e) {
+      // Catch any error that occurs during the request
+      throw Exception('Error fetching lead district: $e');
+    }
+  }
+
+  // Fetch lead data using the leadId
+  Future<List<Map<String, String>>> getMachineNames(String productId) async {
+    final url = Uri.parse('$baseUrl/get_machine_names/$productId'); // API endpoint
+
+    try {
+      final response = await http.get(url);
+      // Check if the response is successful
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+        return data
+            .map<Map<String, String>>((item) => {
+          "value": item["id"].toString(),
+          "text": item["name"].toString(),
+        })
+            .toList();
+      } else {
+        // If the server returns an error, throw an exception
+        throw Exception('Failed to load district');
+      }
+    } catch (e) {
+      // Catch any error that occurs during the request
+      throw Exception('Error fetching lead district: $e');
     }
   }
 }

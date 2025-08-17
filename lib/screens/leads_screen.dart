@@ -67,6 +67,14 @@ class _LeadsPageState extends State<LeadsPage> {
     print('on call end 111');
     if (!await Permission.phone.request().isGranted) return;
 
+    _showFeedbackPopup(context, leadId, phoneNumber);
+  }
+
+  Future<void> _onFeedbackSubmit(context, Map<String, dynamic> formData) async {
+    // Extract individual values
+    String leadId = formData["leadId"];
+    String phoneNumber = formData["phoneNumber"];
+
     Iterable<CallLogEntry> logs = await CallLog.query(number: phoneNumber);
     if (logs.isEmpty) return;
     print('on call end 111');
@@ -81,6 +89,7 @@ class _LeadsPageState extends State<LeadsPage> {
         : Map<String, dynamic>.from(rawData);
     final staffId = staffInfo['staffid'] ?? '';
     print('on call end 111');
+
     final callHistoryMap = {
       "name": entry.name,
       "number": entry.number,
@@ -88,15 +97,584 @@ class _LeadsPageState extends State<LeadsPage> {
       "timestamp": entry.timestamp,
       "callType": entry.callType.toString()
     };
+
     print('on call end 1111111 $callHistoryMap');
     final success = await saveCallHistory(
       staffId: staffId,
       leadId: leadId,
+      formData: formData,
       callHistory: callHistoryMap,
     );
-
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(success ? '📘 History saved' : '⚠️ Save failed')),
+      SnackBar(content: Text(success ? '📘 Call history & notes saved successfully.' : '⚠️ Call history & notes save failed')),
+    );
+    Navigator.of(context).pop(true);
+  }
+
+  void _showFeedbackPopup(BuildContext context, leadId, phoneNumber) {
+    // ---------- Static dropdown data (value + text) ----------
+    final List<Map<String, String>> leadCallStatus = [
+      {"value": "1", "text": "Interested"},
+      {"value": "2", "text": "Not Interested"},
+      {"value": "3", "text": "Not Attend The Call"},
+      {"value": "4", "text": "Switch Off"},
+    ];
+
+    final List<Map<String, String>> leadBusinessCategory = [
+      {"value": "agri", "text": "Agri"},
+      {"value": "civil", "text": "Civil"},
+    ];
+
+    final List<Map<String, String>> leadTypePurchase = [
+      {"value": "subsidy", "text": "Subsidy"},
+      {"value": "sales", "text": "Sales"},
+    ];
+
+    // ---------- Form + controllers ----------
+    final _formKey = GlobalKey<FormState>();
+    final TextEditingController farmerNameController = TextEditingController();
+    final TextEditingController remarksController = TextEditingController();
+    final TextEditingController reminderDateController =
+        TextEditingController();
+
+    // ---------- Selected values ----------
+    String? selectedStatus;
+    String? selectedBusinessCategory;
+    String? selectedTypePurchase;
+    String? district; // from API
+    String? division;
+    String? block;
+    String? village;
+    String? product;
+    String? machineName;
+
+    // ---------- API: fetch districts ----------
+    final Future<List<Map<String, String>>> districtsFuture =
+        LeadService().getLeadDistrict();
+    Future<List<Map<String, String>>>? divisionsFuture;
+    Future<List<Map<String, String>>>? blocksFuture;
+    Future<List<Map<String, String>>>? villagesFuture;
+    Future<List<Map<String, String>>> productsFuture =
+        LeadService().getProducts();
+    Future<List<Map<String, String>>>? machineNamesFuture;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          insetPadding: EdgeInsets.zero, // full screen
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.zero, // page-like
+          ),
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              // filter purchase options based on business category
+              final List<Map<String, String>> filteredPurchaseOptions =
+                  (selectedBusinessCategory == "civil")
+                      ? leadTypePurchase
+                          .where((t) => t["value"] == "sales")
+                          .toList()
+                      : leadTypePurchase; // agri/null -> both
+
+              return Column(
+                children: [
+                  // ---------- Fixed Header ----------
+                  Container(
+                    width: double.infinity,
+                    color: Colors.white70,
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      "Call History",
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: primaryColor,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const Divider(height: 1),
+
+                  // ---------- Scrollable form ----------
+                  Expanded(
+                    child: Container(
+                      color: Colors.white,
+                      padding: const EdgeInsets.all(16),
+                      child: Form(
+                        key: _formKey,
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Farmer Name
+                              TextFormField(
+                                controller: farmerNameController,
+                                decoration: const InputDecoration(
+                                  labelText: "Farmer Name",
+                                  border: UnderlineInputBorder(),
+                                ),
+                                validator: (v) => (v == null || v.isEmpty)
+                                    ? "Enter farmer name"
+                                    : null,
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Lead Call Status
+                              DropdownButtonFormField<String>(
+                                value: selectedStatus,
+                                decoration: const InputDecoration(
+                                  labelText: "Lead Call Status",
+                                  border: UnderlineInputBorder(),
+                                ),
+                                items: leadCallStatus
+                                    .map((s) => DropdownMenuItem<String>(
+                                          value: s["value"],
+                                          child: Text(s["text"]!),
+                                        ))
+                                    .toList(),
+                                onChanged: (val) => setState(() {
+                                  selectedStatus = val;
+                                }),
+                                validator: (v) => v == null
+                                    ? "Select lead call status"
+                                    : null,
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Lead Business Category
+                              DropdownButtonFormField<String>(
+                                value: selectedBusinessCategory,
+                                decoration: const InputDecoration(
+                                  labelText: "Lead Business Category",
+                                  border: UnderlineInputBorder(),
+                                ),
+                                items: leadBusinessCategory
+                                    .map((c) => DropdownMenuItem<String>(
+                                          value: c["value"],
+                                          child: Text(c["text"]!),
+                                        ))
+                                    .toList(),
+                                onChanged: (val) => setState(() {
+                                  selectedBusinessCategory = val;
+                                  selectedTypePurchase = null; // reset child
+                                }),
+                                validator: (v) => v == null
+                                    ? "Select business category"
+                                    : null,
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Type of Purchase (dependent)
+                              DropdownButtonFormField<String>(
+                                value: selectedTypePurchase,
+                                decoration: const InputDecoration(
+                                  labelText: "Type of Purchase",
+                                  border: UnderlineInputBorder(),
+                                ),
+                                items: filteredPurchaseOptions
+                                    .map((t) => DropdownMenuItem<String>(
+                                          value: t["value"],
+                                          child: Text(t["text"]!),
+                                        ))
+                                    .toList(),
+                                onChanged: (val) => setState(() {
+                                  selectedTypePurchase = val;
+                                }),
+                                validator: (v) => v == null
+                                    ? "Select type of purchase"
+                                    : null,
+                              ),
+                              const SizedBox(height: 12),
+
+                              // District (from API)
+                              FutureBuilder<List<Map<String, String>>>(
+                                future: districtsFuture,
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState ==
+                                      ConnectionState.waiting) {
+                                    return const Padding(
+                                      padding:
+                                          EdgeInsets.symmetric(vertical: 8),
+                                      child: LinearProgressIndicator(),
+                                    );
+                                  }
+                                  if (snapshot.hasError) {
+                                    return const Text(
+                                      "Error loading districts",
+                                      style: TextStyle(color: Colors.red),
+                                    );
+                                  }
+                                  final districts = snapshot.data ?? [];
+                                  if (districts.isEmpty) {
+                                    return const Text("No districts available");
+                                  }
+                                  return DropdownButtonFormField<String>(
+                                    value: district,
+                                    decoration: const InputDecoration(
+                                      labelText: "District",
+                                      border: UnderlineInputBorder(),
+                                    ),
+                                    items: districts
+                                        .map((d) => DropdownMenuItem<String>(
+                                              value: d["value"],
+                                              child: Text(d["text"]!),
+                                            ))
+                                        .toList(),
+                                    onChanged: (val) {
+                                      setState(() {
+                                        district = val;
+                                        division = null;
+                                        divisionsFuture = LeadService()
+                                            .getLeadDivision(
+                                                val!); // fetch divisions dynamically
+                                        blocksFuture = null; // reset blocks
+                                      });
+                                      if (val != null) {
+                                        LeadService().getLeadDivision(val);
+                                      }
+                                    },
+                                    validator: (v) =>
+                                        v == null ? "Select district" : null,
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Division Dropdown
+                              if (divisionsFuture != null)
+                                FutureBuilder<List<Map<String, String>>>(
+                                  future: divisionsFuture,
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return const LinearProgressIndicator();
+                                    }
+                                    if (snapshot.hasError) {
+                                      return const Text(
+                                          "Error loading divisions",
+                                          style: TextStyle(color: Colors.red));
+                                    }
+                                    final divisions = snapshot.data ?? [];
+                                    if (divisions.isEmpty) {
+                                      return const Text(
+                                          "No divisions available");
+                                    }
+                                    return DropdownButtonFormField<String>(
+                                      value: division,
+                                      decoration: const InputDecoration(
+                                        labelText: "Division",
+                                        border: UnderlineInputBorder(),
+                                      ),
+                                      items: divisions
+                                          .map((d) => DropdownMenuItem<String>(
+                                                value: d["value"],
+                                                child: Text(d["text"]!),
+                                              ))
+                                          .toList(),
+                                      onChanged: (val) {
+                                        setState(() {
+                                          division = val;
+                                          block = null;
+                                          if (district != null &&
+                                              division != null) {
+                                            blocksFuture = LeadService()
+                                                .getLeadBlocks(
+                                                    district!, division!);
+                                          }
+                                        });
+                                      },
+                                      validator: (v) =>
+                                          v == null ? "Select division" : null,
+                                    );
+                                  },
+                                )
+                              else
+                                const SizedBox(),
+                              const SizedBox(height: 12),
+
+                              if (blocksFuture != null)
+                                FutureBuilder<List<Map<String, String>>>(
+                                  future: blocksFuture,
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return const LinearProgressIndicator();
+                                    }
+                                    if (snapshot.hasError) {
+                                      return const Text("Error loading blocks",
+                                          style: TextStyle(color: Colors.red));
+                                    }
+                                    final blocks = snapshot.data ?? [];
+                                    if (blocks.isEmpty) {
+                                      return const Text("No blocks available");
+                                    }
+                                    return DropdownButtonFormField<String>(
+                                      value: block,
+                                      decoration: const InputDecoration(
+                                        labelText: "Block",
+                                        border: UnderlineInputBorder(),
+                                      ),
+                                      items: blocks
+                                          .map((b) => DropdownMenuItem<String>(
+                                                value: b["value"],
+                                                child: Text(b["text"]!),
+                                              ))
+                                          .toList(),
+                                      onChanged: (val) {
+                                        setState(() {
+                                          block = val;
+                                          village = null;
+                                          if (district != null &&
+                                              division != null &&
+                                              block != null) {
+                                            villagesFuture = LeadService()
+                                                .getLeadVillages(district!,
+                                                    division!, block!);
+                                          }
+                                        });
+                                      },
+                                      validator: (v) =>
+                                          v == null ? "Select block" : null,
+                                    );
+                                  },
+                                ),
+                              const SizedBox(height: 12),
+
+                              // Village
+                              if (villagesFuture != null)
+                                FutureBuilder<List<Map<String, String>>>(
+                                  future: villagesFuture,
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return const LinearProgressIndicator();
+                                    }
+                                    if (snapshot.hasError) {
+                                      return const Text(
+                                          "Error loading villages",
+                                          style: TextStyle(color: Colors.red));
+                                    }
+                                    final villages = snapshot.data ?? [];
+                                    if (villages.isEmpty) {
+                                      return const Text(
+                                          "No villages available");
+                                    }
+                                    return DropdownButtonFormField<String>(
+                                      value: village,
+                                      decoration: const InputDecoration(
+                                        labelText: "Village",
+                                        border: UnderlineInputBorder(),
+                                      ),
+                                      items: villages
+                                          .map((v) => DropdownMenuItem<String>(
+                                                value: v["value"],
+                                                child: Text(v["text"]!),
+                                              ))
+                                          .toList(),
+                                      onChanged: (val) =>
+                                          setState(() => village = val),
+                                      validator: (v) =>
+                                          v == null ? "Select village" : null,
+                                    );
+                                  },
+                                ),
+                              const SizedBox(height: 12),
+
+                              // Product
+                              FutureBuilder<List<Map<String, String>>>(
+                                future: productsFuture,
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState ==
+                                      ConnectionState.waiting) {
+                                    return const LinearProgressIndicator();
+                                  }
+                                  if (snapshot.hasError) {
+                                    return const Text("Error loading products",
+                                        style: TextStyle(color: Colors.red));
+                                  }
+                                  final products = snapshot.data ?? [];
+                                  if (products.isEmpty) {
+                                    return const Text("No products available");
+                                  }
+                                  return DropdownButtonFormField<String>(
+                                    value: product,
+                                    decoration: const InputDecoration(
+                                      labelText: "Product",
+                                      border: UnderlineInputBorder(),
+                                    ),
+                                    items: products
+                                        .map((p) => DropdownMenuItem<String>(
+                                              value: p["value"],
+                                              child: Text(p["text"]!),
+                                            ))
+                                        .toList(),
+                                    onChanged: (val) {
+                                      setState(() {
+                                        product = val;
+                                        machineName = null; // reset machine
+                                        machineNamesFuture =
+                                            null; // reset before fetch
+                                      });
+                                      if (val != null) {
+                                        setState(() {
+                                          machineNamesFuture = LeadService()
+                                              .getMachineNames(val);
+                                        });
+                                      }
+                                    },
+                                    validator: (v) =>
+                                        v == null ? "Select product" : null,
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Machine Name
+                              if (machineNamesFuture != null)
+                                FutureBuilder<List<Map<String, String>>>(
+                                  future: machineNamesFuture,
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return const LinearProgressIndicator();
+                                    }
+                                    if (snapshot.hasError) {
+                                      return const Text(
+                                        "Error loading machine names",
+                                        style: TextStyle(color: Colors.red),
+                                      );
+                                    }
+                                    final machines = snapshot.data ?? [];
+                                    if (machines.isEmpty) {
+                                      return const Text(
+                                          "No machine names available");
+                                    }
+                                    return DropdownButtonFormField<String>(
+                                      value: machineName,
+                                      decoration: const InputDecoration(
+                                        labelText: "Machine Name",
+                                        border: UnderlineInputBorder(),
+                                      ),
+                                      items: machines
+                                          .map((m) => DropdownMenuItem<String>(
+                                                value: m["value"],
+                                                child: Text(m["text"]!),
+                                              ))
+                                          .toList(),
+                                      onChanged: (val) =>
+                                          setState(() => machineName = val),
+                                      validator: (v) => v == null
+                                          ? "Select machine name"
+                                          : null,
+                                    );
+                                  },
+                                )
+                              else
+                                const SizedBox(), // safe placeholder
+
+                              const SizedBox(height: 12),
+
+                              // Lead Reminder Date
+                              TextFormField(
+                                controller: reminderDateController,
+                                readOnly: true,
+                                decoration: const InputDecoration(
+                                  labelText: "Lead Reminder Date",
+                                  border: UnderlineInputBorder(),
+                                  suffixIcon: Icon(Icons.calendar_today),
+                                ),
+                                onTap: () async {
+                                  final pickedDate = await showDatePicker(
+                                    context: context,
+                                    initialDate: DateTime.now(),
+                                    firstDate: DateTime(2000),
+                                    lastDate: DateTime(2100),
+                                  );
+                                  if (pickedDate != null) {
+                                    reminderDateController.text =
+                                        "${pickedDate.toLocal()}".split(' ')[0];
+                                  }
+                                },
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Remarks
+                              TextFormField(
+                                controller: remarksController,
+                                decoration: const InputDecoration(
+                                  labelText: "Remarks",
+                                  border: UnderlineInputBorder(),
+                                ),
+                                maxLines: 3,
+                                validator: (v) =>
+                                    (v == null || v.trim().isEmpty)
+                                        ? 'Remarks required'
+                                        : null,
+                              ),
+
+                              const SizedBox(
+                                  height: 80), // keep above fixed button
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // ---------- Fixed Submit Button ----------
+                  Container(
+                    width: double.infinity,
+                    color: Colors.white,
+                    padding: const EdgeInsets.all(16),
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: () {
+                        if (_formKey.currentState!.validate()) {
+                          // Collect all values into JSON
+                          final Map<String, dynamic> formData = {
+                            "leadId": leadId,
+                            "phoneNumber": phoneNumber,
+                            "farmerName": farmerNameController.text.trim(),
+                            "leadCallStatus": selectedStatus,
+                            "businessCategory": selectedBusinessCategory,
+                            "typeOfPurchase": selectedTypePurchase,
+                            "district": district,
+                            "division": division ?? 0,
+                            "block": block ?? 0,
+                            "village": village ?? 0,
+                            "product": product,
+                            "machineName": machineName ?? 0,
+                            "reminderDate": reminderDateController.text.trim(),
+                            "remarks": remarksController.text.trim(),
+                          };
+
+                          // Print / send this JSON
+                          debugPrint("Form JSON: ${jsonEncode(formData)}");
+
+                          // Call your submit function
+                          _onFeedbackSubmit(context, formData);
+                        }
+                      },
+                      child: const Text(
+                        "Submit",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -196,6 +774,7 @@ class _LeadsPageState extends State<LeadsPage> {
   }
 
   Future<void> makeCall(String phone, String status, String leadId) async {
+    // _showFeedbackPopup(context, leadId, '8902320323');
     if (status.toLowerCase() == 'completed') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cannot call a completed lead')),

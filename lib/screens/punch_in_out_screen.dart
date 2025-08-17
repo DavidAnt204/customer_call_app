@@ -461,7 +461,7 @@ class _PunchInOutScreenState extends State<PunchInOutScreen> {
                   child: SingleChildScrollView(
                     padding: EdgeInsets.all(16),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Card(
                           shape: RoundedRectangleBorder(

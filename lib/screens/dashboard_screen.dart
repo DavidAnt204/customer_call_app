@@ -47,10 +47,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     Attendance? attendance =
         await _attendanceService.getTodayAttendance(staffInfo!['staffid']);
     setState(() {
-      _attendance = attendance;
-      punchInTime = DateTime.tryParse(attendance!.punchIn);
-      punchOutTime = DateTime.tryParse(attendance.punchOut);
-      punchLocation = attendance.punchInLocation;
+      _attendance = attendance!;
+      punchInTime = DateTime.tryParse(_attendance!.punchIn ?? '');
+      punchOutTime = DateTime.tryParse(_attendance!.punchOut ?? '');
+      punchLocation = _attendance!.punchInLocation ?? '';
     });
   }
 
