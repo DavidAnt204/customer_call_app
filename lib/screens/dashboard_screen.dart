@@ -1,9 +1,18 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:hive/hive.dart';
+import 'package:intl/intl.dart';
 
 import '../services/api_services.dart';
 import 'punch_in_out_screen.dart';
+
+// --- Design & Color Constants ---
+const Color primaryColor = Color(0xFF4169E1); // Royal Blue
+const Color accentColor = Color(0xFF00C6FF); // Bright Cyan
+const Color bgColor = Color(0xFFF5F7FA); // Light background
+const Color cardColor = Colors.white;
+const double cardRadius = 18.0;
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -13,7 +22,7 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  // String userName = "John Doe";
+  // Functionality Preserved: Initialization
   AttendanceService _attendanceService = AttendanceService();
   Attendance? _attendance;
 
@@ -30,6 +39,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadAttendance();
   }
 
+  // Functionality Preserved: Swipe Refresh Handler
+  Future<void> _onRefresh() async {
+    await _loadAttendance();
+  }
+
+  // Functionality Preserved: Data Fetching
   getUserInfo() {
     final box = Hive.box('myBox');
     final dynamic rawData = box.get('staffinfo');
@@ -37,23 +52,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? Map<String, dynamic>.from(jsonDecode(rawData))
         : Map<String, dynamic>.from(rawData);
 
-    userName =
-        (staffInfo!['firstname'] ?? '') + ' ' + (staffInfo!['lastname'] ?? '');
-
+    userName = (staffInfo!['firstname'] ?? '') + ' ' + (staffInfo!['lastname'] ?? '');
     return staffInfo;
   }
 
+  // Functionality Preserved: Attendance Loading
   _loadAttendance() async {
-    Attendance? attendance =
-        await _attendanceService.getTodayAttendance(staffInfo!['staffid']);
-    setState(() {
-      _attendance = attendance!;
-      punchInTime = DateTime.tryParse(_attendance!.punchIn ?? '');
-      punchOutTime = DateTime.tryParse(_attendance!.punchOut ?? '');
-      punchLocation = _attendance!.punchInLocation ?? '';
-    });
+    if (staffInfo != null && staffInfo!['staffid'] != null) {
+      // Assuming Attendance is defined in api_services.dart
+      Attendance? attendance = await _attendanceService.getTodayAttendance(staffInfo!['staffid']);
+      if (mounted) {
+        setState(() {
+          _attendance = attendance;
+          punchInTime = DateTime.tryParse(_attendance?.punchIn ?? '');
+          punchOutTime = DateTime.tryParse(_attendance?.punchOut ?? '');
+          punchLocation = _attendance?.punchInLocation ?? '';
+        });
+      }
+    }
   }
 
+  // Functionality Preserved: Punch Action Handler
   void handlePunchAction() async {
     final DateTime? result = await Navigator.push(
       context,
@@ -63,143 +82,170 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
     );
-    if (result != null) {
+    if (result != null && mounted) {
       setState(() {
         if (punchInTime == null || punchOutTime != null) {
-          // Punch In
           punchInTime = result;
           punchOutTime = null;
         } else {
-          // Punch Out
           punchOutTime = result;
         }
+        _loadAttendance();
       });
     }
-    // setState(() {
-    //   if (punchInTime == null) {
-    //     // Simulate punch in
-    //     punchInTime = DateTime.now();
-    //     punchOutTime = null;
-    //   } else {
-    //     // Simulate punch out
-    //     punchOutTime = DateTime.now();
-    //   }
-    // });
   }
 
+  // Functionality Preserved: Time Formatting
   String formatTime(DateTime? time) {
     if (time == null) return "--:--";
-    return "${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')} ${time.hour >= 12 ? 'PM' : 'AM'}";
+    return DateFormat('hh:mm').format(time);
+  }
+
+  String formatMeridiem(DateTime? time) {
+    if (time == null) return "";
+    return DateFormat('a').format(time); // 'AM' or 'PM'
+  }
+
+  // --- WIDGETS ---
+
+  Widget _buildGreetingHeader(String userName) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 30, 20, 15),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [primaryColor, primaryColor.withOpacity(0.8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text("Welcome back,",
+                    style: GoogleFonts.poppins(fontSize: 12, color: Colors.white70)),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(userName,
+                          style: GoogleFonts.poppins(
+                              fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.waving_hand, color: Color(0xFFF4C542), size: 20),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: cardColor,
+            child: Icon(Icons.person_rounded, color: primaryColor, size: 20),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget buildAttendanceCard() {
     final bool hasPunchedIn = punchInTime != null && punchOutTime == null;
 
     return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12), // Match quick actions
-      ),
-      color: Colors.white, // Match quick actions
-      elevation: 3, // Match quick actions
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(cardRadius)),
+      elevation: 8,
+      color: cardColor,
       child: Padding(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text('Daily Attendance Status',
+                style: GoogleFonts.poppins(
+                    fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor)),
+            const Divider(height: 20, thickness: 1),
+
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Left side
+                // Time Display
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Punch In/Out section
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "Punch In",
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.black54,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            formatTime(punchInTime),
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          SizedBox(height: 12),
-                          Text(
-                            "Punch Out",
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.black54,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            formatTime(punchOutTime),
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                      // Punch In
+                      _buildTimeStatus(
+                        'Punch In',
+                        punchInTime,
+                        Icons.login_rounded,
+                        primaryColor,
+                      ),
+                      // Divider
+                      Container(width: 1, height: 60, color: Colors.grey.shade200),
+                      // Punch Out
+                      _buildTimeStatus(
+                        'Punch Out',
+                        punchOutTime,
+                        Icons.logout_rounded,
+                        Colors.redAccent,
                       ),
                     ],
                   ),
                 ),
 
-                // Right side: Button
-                GestureDetector(
+                const SizedBox(width: 15),
+
+                // Punch Button
+                InkWell(
                   onTap: handlePunchAction,
+                  borderRadius: BorderRadius.circular(cardRadius),
                   child: Container(
-                    padding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                    padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
                     decoration: BoxDecoration(
-                      color: Colors.blueAccent,
-                      borderRadius: BorderRadius.circular(12),
+                      gradient: LinearGradient(
+                        colors: hasPunchedIn ? [Colors.redAccent, Colors.red.shade700] : [accentColor, primaryColor],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(cardRadius),
+                      boxShadow: [
+                        BoxShadow(
+                          color: hasPunchedIn ? Colors.red.withOpacity(0.3) : primaryColor.withOpacity(0.3),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          hasPunchedIn ? Icons.logout : Icons.login,
-                          color: Colors.white,
-                          size: 30,
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          hasPunchedIn ? "Punch Out" : "Punch In",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        Icon(hasPunchedIn ? Icons.logout_rounded : Icons.login_rounded, color: Colors.white, size: 30),
+                        const SizedBox(height: 8),
+                        Text(hasPunchedIn ? "Punch Out" : "Punch In",
+                            style: GoogleFonts.poppins(
+                                color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                       ],
                     ),
                   ),
                 ),
               ],
             ),
-            SizedBox(height: 12),
-
-            // Location (Full width)
+            const SizedBox(height: 15),
+            // Location Info
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.location_on, size: 16, color: Colors.blue),
-                SizedBox(width: 4),
+                Icon(Icons.location_on_rounded, size: 18, color: primaryColor),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    punchLocation ?? '--',
-                    style: TextStyle(color: Colors.black54),
-                    softWrap: true,
+                    punchLocation?.isNotEmpty == true ? punchLocation! : 'Location not recorded.',
+                    style: GoogleFonts.poppins(color: Colors.black54, fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -210,216 +256,97 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget buildStatCard(String title, String value, IconData icon, Color color) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Container(
-        padding: EdgeInsets.all(16),
-        width: double.infinity,
-        child: Row(
+  Widget _buildTimeStatus(String label, DateTime? time, IconData icon, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Icon(icon, size: 20, color: color.withOpacity(0.7)),
+        const SizedBox(height: 4),
+        Text(label, style: GoogleFonts.poppins(fontSize: 13, color: Colors.black54)),
+        const SizedBox(height: 2),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            CircleAvatar(
-              backgroundColor: color,
-              child: Icon(icon, color: Colors.white),
-            ),
-            SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: TextStyle(fontWeight: FontWeight.bold)),
-                SizedBox(height: 4),
-                Text(value, style: TextStyle(fontSize: 16)),
-              ],
-            ),
+            Text(formatTime(time),
+                style: GoogleFonts.poppins(
+                    fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const SizedBox(width: 4),
+            Text(formatMeridiem(time),
+                style: GoogleFonts.poppins(
+                    fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black54)),
           ],
         ),
-      ),
+      ],
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Color(0xFFF5F7FA), // Light background like image
-      appBar: AppBar(
-        title: LayoutBuilder(
-          builder: (context, constraints) {
-            final screenWidth = constraints.maxWidth;
-            final fontSize = screenWidth > 400 ? 20.0 : 16.0;
-
-            return Row(
-              children: [
-                Text(
-                  "Welcome, ",
-                  style: TextStyle(fontSize: fontSize, color: Colors.white),
-                ),
-                Text(
-                  userName!,
-                  style: TextStyle(
-                      fontSize: fontSize,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                SizedBox(width: 6),
-                Icon(
-                  Icons.waving_hand,
-                  size: fontSize + 2,
-                  color: Color(0xFFF4C542),
-                ),
-              ],
-            );
-          },
+  // --- MODIFIED: Reduced padding and font size ---
+  Widget buildStatCard(String value, String title, {Color startColor = primaryColor, Color endColor = accentColor}) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(cardRadius),
+        gradient: LinearGradient(
+          colors: [startColor, endColor],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        // Text(
-        //   'Dashboard',
-        //   style: TextStyle(
-        //     color: Colors.white,
-        //     fontWeight: FontWeight.bold,
-        //     fontSize: 20,
-        //   ),
-        // ),
-        backgroundColor: Color(0xFF2A6BC8), // Blue header background from image
-        elevation: 0,
-        centerTitle: false,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: CircleAvatar(
-              backgroundColor: Color(0xFF1E57B7),
-              child: Icon(Icons.person, color: Colors.white),
-            ),
+        boxShadow: [
+          BoxShadow(
+            color: endColor.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
-      body: Padding(
-        padding: EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              buildAttendanceCard(),
-              SizedBox(height: 24),
-
-              // Stats cards grid (Total Leads, New Leads, Opportunities, Closed Deals)
-              // GridView.count(
-              //   shrinkWrap: true,
-              //   crossAxisCount: 2,
-              //   crossAxisSpacing: 12,
-              //   mainAxisSpacing: 12,
-              //   physics: NeverScrollableScrollPhysics(),
-              //   children: [
-              //     buildStatCardNew('245', 'Total Leads'),
-              //     buildStatCardNew('56', 'New Leads'),
-              //     buildStatCardNew('34', 'Opportunities'),
-              //     buildStatCardNew('12', 'Closed Deals'),
-              //   ],
-              // ),
-              //
-              // SizedBox(height: 24),
-              // Text(
-              //   'Quick Actions',
-              //   style: TextStyle(
-              //     fontWeight: FontWeight.bold,
-              //     fontSize: 18,
-              //     color: Color(0xFF1F2F5C),
-              //   ),
-              // ),
-              // SizedBox(height: 12),
-              //
-              // // Quick actions grid
-              // GridView.count(
-              //   shrinkWrap: true,
-              //   crossAxisCount: 2,
-              //   crossAxisSpacing: 12,
-              //   mainAxisSpacing: 12,
-              //   physics: NeverScrollableScrollPhysics(),
-              //   // childAspectRatio: 2.8,
-              //   children: [
-              //     buildQuickActionCard(Icons.add, 'Add Lead'),
-              //     buildQuickActionCard(Icons.calendar_today, 'Add Event'),
-              //     buildQuickActionCard(Icons.list, 'Add Task'),
-              //     buildQuickActionCard(Icons.note, 'Add Note'),
-              //   ],
-              // ),
-              //
-              // SizedBox(height: 24),
-              // Text(
-              //   'Sales Activities',
-              //   style: TextStyle(
-              //     fontWeight: FontWeight.bold,
-              //     fontSize: 18,
-              //     color: Color(0xFF1F2F5C),
-              //   ),
-              // ),
-              // SizedBox(height: 12),
-
-              // Sales activities list
-              // buildSalesActivityItem('John Doe', 'Contacted'),
-              // buildSalesActivityItem('Sarah Smith', 'Meeting'),
-              // buildSalesActivityItem('Michael Brown', 'Follow-up'),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget buildStatCardNew(String value, String title) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: Colors.white,
-      elevation: 3,
       child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+        // REDUCED VERTICAL PADDING FROM 20 TO 15
+        padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 10),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1F2F5C),
-              ),
-            ),
-            SizedBox(height: 6),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                color: Color(0xFF1F2F5C),
-              ),
-            ),
+            Text(value,
+                style: GoogleFonts.poppins(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800, color: Colors.white)),
+            const SizedBox(height: 4),
+            Text(title,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                    fontSize: 13, color: Colors.white70, fontWeight: FontWeight.w500)),
           ],
         ),
       ),
     );
   }
 
-  Widget buildQuickActionCard(IconData icon, String label) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: Colors.white,
-      elevation: 3,
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+  Widget buildQuickActionCard(IconData icon, String label, Color color) {
+    return InkWell(
+      onTap: () {},
+      borderRadius: BorderRadius.circular(cardRadius),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(cardRadius),
+          color: cardColor,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: Border.all(color: color.withOpacity(0.2), width: 1.5),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: Color(0xFF2A6BC8), size: 28),
-            SizedBox(height: 10),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                color: Color(0xFF1F2F5C),
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            Icon(icon, color: color, size: 30),
+            const SizedBox(height: 10),
+            Flexible(
+              child: Text(label,
+                  style: GoogleFonts.poppins(
+                      fontSize: 14, color: Colors.black87, fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center),
             ),
           ],
         ),
@@ -428,28 +355,135 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget buildSalesActivityItem(String name, String status) {
+    Color statusColor;
+    switch (status) {
+      case 'Meeting':
+        statusColor = Colors.orange.shade700;
+        break;
+      case 'Follow-up':
+        statusColor = primaryColor;
+        break;
+      case 'Contacted':
+      default:
+        statusColor = Colors.green.shade600;
+        break;
+    }
+
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: Colors.white,
-      elevation: 2,
-      margin: EdgeInsets.only(bottom: 12),
+      color: cardColor,
+      elevation: 4,
+      margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: CircleAvatar(
-          backgroundColor: Color(0xFF2A6BC8),
-          child: Icon(Icons.person, color: Colors.white),
+          backgroundColor: statusColor.withOpacity(0.15),
+          child: Icon(Icons.person, color: statusColor),
         ),
-        title: Text(
-          name,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF1F2F5C),
-          ),
-        ),
-        subtitle: Text(
-          status,
-          style: TextStyle(
-            color: Color(0xFF64798A),
-          ),
+        title: Text(name,
+            style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.black87)),
+        subtitle: Text(status,
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w500, color: Colors.grey.shade600)),
+        trailing: Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey.shade400),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: bgColor,
+      body: RefreshIndicator(
+        onRefresh: _onRefresh,
+        color: primaryColor,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverAppBar(
+              automaticallyImplyLeading: false,
+              pinned: true,
+              expandedHeight: 100.0,
+              toolbarHeight: 0,
+              flexibleSpace: FlexibleSpaceBar(
+                titlePadding: EdgeInsets.zero,
+                centerTitle: false,
+                title: _buildGreetingHeader(userName ?? 'User'),
+              ),
+              backgroundColor: primaryColor,
+            ),
+
+            SliverList(
+              delegate: SliverChildListDelegate(
+                [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 1. Attendance Card
+                        buildAttendanceCard(),
+                        const SizedBox(height: 24),
+
+                        // 2. Stat Cards (Performance Overview)
+                        Text('Performance Overview',
+                            style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.bold, fontSize: 20, color: Colors.black87)),
+                        const SizedBox(height: 12),
+                        GridView.count(
+                          shrinkWrap: true,
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          physics: const NeverScrollableScrollPhysics(),
+                          children: [
+                            buildStatCard('245', 'Total Leads', startColor: primaryColor, endColor: accentColor),
+                            buildStatCard('56', 'New Leads', startColor: Colors.deepPurple, endColor: Colors.purpleAccent),
+                            buildStatCard('34', 'Opportunities', startColor: Colors.teal, endColor: Colors.tealAccent.shade400),
+                            buildStatCard('12', 'Closed Deals', startColor: Colors.orange, endColor: Colors.pinkAccent),
+                          ],
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // 3. Quick Actions
+                        // Text('Quick Actions',
+                        //     style: GoogleFonts.poppins(
+                        //         fontWeight: FontWeight.bold, fontSize: 20, color: Colors.black87)),
+                        // const SizedBox(height: 12),
+                        // GridView.count(
+                        //   shrinkWrap: true,
+                        //   crossAxisCount: 4,
+                        //   crossAxisSpacing: 10,
+                        //   mainAxisSpacing: 10,
+                        //   childAspectRatio: 0.7,
+                        //   physics: const NeverScrollableScrollPhysics(),
+                        //   children: [
+                        //     buildQuickActionCard(Icons.add, 'Add Lead', Colors.green.shade600),
+                        //     buildQuickActionCard(Icons.calendar_today, 'Add Event', Colors.orange.shade600),
+                        //     buildQuickActionCard(Icons.list, 'Add Task', primaryColor),
+                        //     buildQuickActionCard(Icons.note, 'Add Note', Colors.pink.shade600),
+                        //   ],
+                        // ),
+
+                        const SizedBox(height: 24),
+
+                        // 4. Sales Activity
+                        Text('Recent Sales Activities',
+                            style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.bold, fontSize: 20, color: Colors.black87)),
+                        const SizedBox(height: 12),
+
+                        buildSalesActivityItem('John Doe', 'Contacted'),
+                        buildSalesActivityItem('Sarah Smith', 'Meeting'),
+                        buildSalesActivityItem('Michael Brown', 'Follow-up'),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

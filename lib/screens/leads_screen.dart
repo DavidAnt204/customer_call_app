@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:ui'; // Required for BackdropFilter
 import 'package:call_log/call_log.dart';
+import 'package:customer_call/screens/view_lead_screen.dart' hide LeadService;
 import 'package:flutter/material.dart';
 import 'package:flutter_direct_call_plus/flutter_direct_call.dart';
 import 'package:flutter_phone_call_state/flutter_phone_call_state.dart';
@@ -10,6 +12,58 @@ import 'package:permission_handler/permission_handler.dart';
 import '../services/api_services.dart';
 import '../services/helpers.dart';
 import 'add_lead_screen.dart';
+
+// --- Color and Style Constants (Trendy/M3 Look) ---
+const Color primaryColor = Color(0xFF4169E1); // A vibrant Royal Blue
+const Color onPrimary = Colors.white;
+const Color secondaryColor = Color(0xFF64B5F6); // Lighter Blue for accents
+const double cardRadius = 16.0;
+
+// Reusable Status Chip Widget
+class StatusChip extends StatelessWidget {
+  final Color color;
+  final IconData icon;
+  final String text;
+
+  const StatusChip({
+    super.key,
+    required this.color,
+    required this.icon,
+    required this.text,
+  });
+
+  // Determines if the color is dark enough to require white text
+  bool _isDark(Color c) => c.computeLuminance() < 0.3;
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = _isDark(color) ? onPrimary : Colors.black87;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color, // Use the solid color for better visibility
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: textColor),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              color: textColor,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+// ------------------------------------------------
 
 class LeadsPage extends StatefulWidget {
   const LeadsPage({super.key});
@@ -26,19 +80,14 @@ class _LeadsPageState extends State<LeadsPage> {
   bool _isCallActive = false;
   String? _currentCallLeadId;
   String? _currentCallNumber;
-  final Color primaryColor = const Color(0xFF4169E1); // #4169E1
   bool _isRefreshing = false;
 
   @override
   void initState() {
     super.initState();
-    // Listen to phone call state changes
-    // PhoneCallState.instance.phoneStateChange.listen(_onPhoneStateEvent);
     PhoneCallState.instance.phoneStateChange.listen((event) {
-      // print('phone Event: ${event.state}, number: ${event.number} outtttt');
       _onPhoneStateEvent(event);
     });
-
     _refresh();
   }
 
@@ -106,7 +155,10 @@ class _LeadsPageState extends State<LeadsPage> {
       callHistory: callHistoryMap,
     );
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(success ? '📘 Call history & notes saved successfully.' : '⚠️ Call history & notes save failed')),
+      SnackBar(
+          content: Text(success
+              ? '📘 Call history & notes saved successfully.'
+              : '⚠️ Call history & notes save failed')),
     );
     Navigator.of(context).pop(true);
   }
@@ -135,7 +187,7 @@ class _LeadsPageState extends State<LeadsPage> {
     final TextEditingController farmerNameController = TextEditingController();
     final TextEditingController remarksController = TextEditingController();
     final TextEditingController reminderDateController =
-        TextEditingController();
+    TextEditingController();
 
     // ---------- Selected values ----------
     String? selectedStatus;
@@ -150,57 +202,116 @@ class _LeadsPageState extends State<LeadsPage> {
 
     // ---------- API: fetch districts ----------
     final Future<List<Map<String, String>>> districtsFuture =
-        LeadService().getLeadDistrict();
+    LeadService().getLeadDistrict();
     Future<List<Map<String, String>>>? divisionsFuture;
     Future<List<Map<String, String>>>? blocksFuture;
     Future<List<Map<String, String>>>? villagesFuture;
     Future<List<Map<String, String>>> productsFuture =
-        LeadService().getProducts();
+    LeadService().getProducts();
     Future<List<Map<String, String>>>? machineNamesFuture;
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
+        // Helper for modern outlined input fields
+        InputDecoration _buildModernInputDecoration({
+          required String labelText,
+          IconData? icon,
+        }) {
+          return InputDecoration(
+            labelText: labelText,
+            // Use primaryColor for focus
+            labelStyle: TextStyle(color: Colors.grey.shade600),
+            floatingLabelStyle:
+            const TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
+            suffixIcon: icon != null
+                ? Icon(icon, color: primaryColor.withOpacity(0.7))
+                : null,
+            contentPadding:
+            const EdgeInsets.symmetric(vertical: 16.0, horizontal: 16.0),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade400, width: 1.5),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade400, width: 1.5),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: primaryColor, width: 2.0),
+            ),
+            filled: true,
+            fillColor: Colors.white,
+          );
+        }
+
         return Dialog(
-          insetPadding: EdgeInsets.zero, // full screen
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.zero, // page-like
+          insetPadding: EdgeInsets.zero,
+          // Slightly rounded edges for a modern feel, but mostly full-screen
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
           child: StatefulBuilder(
             builder: (context, setState) {
-              // filter purchase options based on business category
               final List<Map<String, String>> filteredPurchaseOptions =
-                  (selectedBusinessCategory == "civil")
-                      ? leadTypePurchase
-                          .where((t) => t["value"] == "sales")
-                          .toList()
-                      : leadTypePurchase; // agri/null -> both
+              (selectedBusinessCategory == "civil")
+                  ? leadTypePurchase
+                  .where((t) => t["value"] == "sales")
+                  .toList()
+                  : leadTypePurchase;
 
               return Column(
                 children: [
-                  // ---------- Fixed Header ----------
+                  // ---------- Trendy Header with Close Button ----------
                   Container(
-                    width: double.infinity,
-                    color: Colors.white70,
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      "Call History",
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: primaryColor,
-                      ),
-                      textAlign: TextAlign.center,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(16)), // Match dialog shape
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.withOpacity(0.1),
+                          spreadRadius: 1,
+                          blurRadius: 5,
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.only(
+                        top: 8, bottom: 8, left: 16, right: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Close Button
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded,
+                              color: Colors.black87),
+                          onPressed: () => Navigator.pop(context),
+                          tooltip: "Close",
+                        ),
+                        // Title
+                        Text(
+                          "Call History Feedback",
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: primaryColor,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        // Placeholder for alignment
+                        const SizedBox(width: 48),
+                      ],
                     ),
                   ),
-                  const Divider(height: 1),
+                  const Divider(height: 1, thickness: 1, color: Colors.grey),
 
-                  // ---------- Scrollable form ----------
+                  // ---------- Scrollable Form (Trendy Input Fields) ----------
                   Expanded(
                     child: Container(
-                      color: Colors.white,
-                      padding: const EdgeInsets.all(16),
+                      color: const Color(0xFFF5F7FA), // Light background for contrast
+                      padding: const EdgeInsets.all(20),
                       child: Form(
                         key: _formKey,
                         child: SingleChildScrollView(
@@ -210,82 +321,79 @@ class _LeadsPageState extends State<LeadsPage> {
                               // Farmer Name
                               TextFormField(
                                 controller: farmerNameController,
-                                decoration: const InputDecoration(
+                                decoration: _buildModernInputDecoration(
                                   labelText: "Farmer Name",
-                                  border: UnderlineInputBorder(),
+                                  icon: Icons.person_rounded,
                                 ),
                                 validator: (v) => (v == null || v.isEmpty)
                                     ? "Enter farmer name"
                                     : null,
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 20),
 
                               // Lead Call Status
                               DropdownButtonFormField<String>(
                                 value: selectedStatus,
-                                decoration: const InputDecoration(
+                                decoration: _buildModernInputDecoration(
                                   labelText: "Lead Call Status",
-                                  border: UnderlineInputBorder(),
+                                  icon: Icons.call_end_rounded,
                                 ),
                                 items: leadCallStatus
                                     .map((s) => DropdownMenuItem<String>(
-                                          value: s["value"],
-                                          child: Text(s["text"]!),
-                                        ))
+                                  value: s["value"],
+                                  child: Text(s["text"]!),
+                                ))
                                     .toList(),
                                 onChanged: (val) => setState(() {
                                   selectedStatus = val;
                                 }),
-                                validator: (v) => v == null
-                                    ? "Select lead call status"
-                                    : null,
+                                validator: (v) =>
+                                v == null ? "Select lead call status" : null,
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 20),
 
                               // Lead Business Category
                               DropdownButtonFormField<String>(
                                 value: selectedBusinessCategory,
-                                decoration: const InputDecoration(
+                                decoration: _buildModernInputDecoration(
                                   labelText: "Lead Business Category",
-                                  border: UnderlineInputBorder(),
+                                  icon: Icons.business_rounded,
                                 ),
                                 items: leadBusinessCategory
                                     .map((c) => DropdownMenuItem<String>(
-                                          value: c["value"],
-                                          child: Text(c["text"]!),
-                                        ))
+                                  value: c["value"],
+                                  child: Text(c["text"]!),
+                                ))
                                     .toList(),
                                 onChanged: (val) => setState(() {
                                   selectedBusinessCategory = val;
                                   selectedTypePurchase = null; // reset child
                                 }),
-                                validator: (v) => v == null
-                                    ? "Select business category"
-                                    : null,
+                                validator: (v) =>
+                                v == null ? "Select business category" : null,
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 20),
 
                               // Type of Purchase (dependent)
                               DropdownButtonFormField<String>(
                                 value: selectedTypePurchase,
-                                decoration: const InputDecoration(
+                                decoration: _buildModernInputDecoration(
                                   labelText: "Type of Purchase",
-                                  border: UnderlineInputBorder(),
+                                  icon: Icons.shopping_bag_rounded,
                                 ),
                                 items: filteredPurchaseOptions
                                     .map((t) => DropdownMenuItem<String>(
-                                          value: t["value"],
-                                          child: Text(t["text"]!),
-                                        ))
+                                  value: t["value"],
+                                  child: Text(t["text"]!),
+                                ))
                                     .toList(),
                                 onChanged: (val) => setState(() {
                                   selectedTypePurchase = val;
                                 }),
-                                validator: (v) => v == null
-                                    ? "Select type of purchase"
-                                    : null,
+                                validator: (v) =>
+                                v == null ? "Select type of purchase" : null,
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 20),
 
                               // District (from API)
                               FutureBuilder<List<Map<String, String>>>(
@@ -294,52 +402,47 @@ class _LeadsPageState extends State<LeadsPage> {
                                   if (snapshot.connectionState ==
                                       ConnectionState.waiting) {
                                     return const Padding(
-                                      padding:
-                                          EdgeInsets.symmetric(vertical: 8),
-                                      child: LinearProgressIndicator(),
+                                      padding: EdgeInsets.symmetric(vertical: 8),
+                                      child: LinearProgressIndicator(
+                                          color: primaryColor),
                                     );
                                   }
                                   if (snapshot.hasError) {
-                                    return const Text(
-                                      "Error loading districts",
-                                      style: TextStyle(color: Colors.red),
-                                    );
+                                    return const Text("Error loading districts",
+                                        style: TextStyle(color: Colors.red));
                                   }
                                   final districts = snapshot.data ?? [];
-                                  if (districts.isEmpty) {
-                                    return const Text("No districts available");
-                                  }
+                                  // Use the modern decoration helper
                                   return DropdownButtonFormField<String>(
                                     value: district,
-                                    decoration: const InputDecoration(
+                                    decoration: _buildModernInputDecoration(
                                       labelText: "District",
-                                      border: UnderlineInputBorder(),
+                                      icon: Icons.map_rounded,
                                     ),
                                     items: districts
                                         .map((d) => DropdownMenuItem<String>(
-                                              value: d["value"],
-                                              child: Text(d["text"]!),
-                                            ))
+                                      value: d["value"],
+                                      child: Text(d["text"]!),
+                                    ))
                                         .toList(),
                                     onChanged: (val) {
                                       setState(() {
                                         district = val;
                                         division = null;
                                         divisionsFuture = LeadService()
-                                            .getLeadDivision(
-                                                val!); // fetch divisions dynamically
-                                        blocksFuture = null; // reset blocks
+                                            .getLeadDivision(val!);
+                                        blocksFuture = null;
                                       });
                                       if (val != null) {
                                         LeadService().getLeadDivision(val);
                                       }
                                     },
                                     validator: (v) =>
-                                        v == null ? "Select district" : null,
+                                    v == null ? "Select district" : null,
                                   );
                                 },
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 20),
 
                               // Division Dropdown
                               if (divisionsFuture != null)
@@ -348,29 +451,25 @@ class _LeadsPageState extends State<LeadsPage> {
                                   builder: (context, snapshot) {
                                     if (snapshot.connectionState ==
                                         ConnectionState.waiting) {
-                                      return const LinearProgressIndicator();
+                                      return const LinearProgressIndicator(
+                                          color: primaryColor);
                                     }
                                     if (snapshot.hasError) {
-                                      return const Text(
-                                          "Error loading divisions",
+                                      return const Text("Error loading divisions",
                                           style: TextStyle(color: Colors.red));
                                     }
                                     final divisions = snapshot.data ?? [];
-                                    if (divisions.isEmpty) {
-                                      return const Text(
-                                          "No divisions available");
-                                    }
                                     return DropdownButtonFormField<String>(
                                       value: division,
-                                      decoration: const InputDecoration(
+                                      decoration: _buildModernInputDecoration(
                                         labelText: "Division",
-                                        border: UnderlineInputBorder(),
+                                        icon: Icons.apartment_rounded,
                                       ),
                                       items: divisions
                                           .map((d) => DropdownMenuItem<String>(
-                                                value: d["value"],
-                                                child: Text(d["text"]!),
-                                              ))
+                                        value: d["value"],
+                                        child: Text(d["text"]!),
+                                      ))
                                           .toList(),
                                       onChanged: (val) {
                                         setState(() {
@@ -379,47 +478,45 @@ class _LeadsPageState extends State<LeadsPage> {
                                           if (district != null &&
                                               division != null) {
                                             blocksFuture = LeadService()
-                                                .getLeadBlocks(
-                                                    district!, division!);
+                                                .getLeadBlocks(district!, division!);
                                           }
                                         });
                                       },
                                       validator: (v) =>
-                                          v == null ? "Select division" : null,
+                                      v == null ? "Select division" : null,
                                     );
                                   },
                                 )
                               else
                                 const SizedBox(),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 20),
 
+                              // Block Dropdown
                               if (blocksFuture != null)
                                 FutureBuilder<List<Map<String, String>>>(
                                   future: blocksFuture,
                                   builder: (context, snapshot) {
                                     if (snapshot.connectionState ==
                                         ConnectionState.waiting) {
-                                      return const LinearProgressIndicator();
+                                      return const LinearProgressIndicator(
+                                          color: primaryColor);
                                     }
                                     if (snapshot.hasError) {
                                       return const Text("Error loading blocks",
                                           style: TextStyle(color: Colors.red));
                                     }
                                     final blocks = snapshot.data ?? [];
-                                    if (blocks.isEmpty) {
-                                      return const Text("No blocks available");
-                                    }
                                     return DropdownButtonFormField<String>(
                                       value: block,
-                                      decoration: const InputDecoration(
+                                      decoration: _buildModernInputDecoration(
                                         labelText: "Block",
-                                        border: UnderlineInputBorder(),
+                                        icon: Icons.location_city_rounded,
                                       ),
                                       items: blocks
                                           .map((b) => DropdownMenuItem<String>(
-                                                value: b["value"],
-                                                child: Text(b["text"]!),
-                                              ))
+                                        value: b["value"],
+                                        child: Text(b["text"]!),
+                                      ))
                                           .toList(),
                                       onChanged: (val) {
                                         setState(() {
@@ -429,115 +526,109 @@ class _LeadsPageState extends State<LeadsPage> {
                                               division != null &&
                                               block != null) {
                                             villagesFuture = LeadService()
-                                                .getLeadVillages(district!,
-                                                    division!, block!);
+                                                .getLeadVillages(
+                                                district!, division!, block!);
                                           }
                                         });
                                       },
                                       validator: (v) =>
-                                          v == null ? "Select block" : null,
+                                      v == null ? "Select block" : null,
                                     );
                                   },
                                 ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 20),
 
-                              // Village
+                              // Village Dropdown
                               if (villagesFuture != null)
                                 FutureBuilder<List<Map<String, String>>>(
                                   future: villagesFuture,
                                   builder: (context, snapshot) {
                                     if (snapshot.connectionState ==
                                         ConnectionState.waiting) {
-                                      return const LinearProgressIndicator();
+                                      return const LinearProgressIndicator(
+                                          color: primaryColor);
                                     }
                                     if (snapshot.hasError) {
-                                      return const Text(
-                                          "Error loading villages",
+                                      return const Text("Error loading villages",
                                           style: TextStyle(color: Colors.red));
                                     }
                                     final villages = snapshot.data ?? [];
-                                    if (villages.isEmpty) {
-                                      return const Text(
-                                          "No villages available");
-                                    }
                                     return DropdownButtonFormField<String>(
                                       value: village,
-                                      decoration: const InputDecoration(
+                                      decoration: _buildModernInputDecoration(
                                         labelText: "Village",
-                                        border: UnderlineInputBorder(),
+                                        icon: Icons.home_work_rounded,
                                       ),
                                       items: villages
                                           .map((v) => DropdownMenuItem<String>(
-                                                value: v["value"],
-                                                child: Text(v["text"]!),
-                                              ))
+                                        value: v["value"],
+                                        child: Text(v["text"]!),
+                                      ))
                                           .toList(),
                                       onChanged: (val) =>
                                           setState(() => village = val),
                                       validator: (v) =>
-                                          v == null ? "Select village" : null,
+                                      v == null ? "Select village" : null,
                                     );
                                   },
                                 ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 20),
 
-                              // Product
+                              // Product Dropdown
                               FutureBuilder<List<Map<String, String>>>(
                                 future: productsFuture,
                                 builder: (context, snapshot) {
                                   if (snapshot.connectionState ==
                                       ConnectionState.waiting) {
-                                    return const LinearProgressIndicator();
+                                    return const LinearProgressIndicator(
+                                        color: primaryColor);
                                   }
                                   if (snapshot.hasError) {
                                     return const Text("Error loading products",
                                         style: TextStyle(color: Colors.red));
                                   }
                                   final products = snapshot.data ?? [];
-                                  if (products.isEmpty) {
-                                    return const Text("No products available");
-                                  }
                                   return DropdownButtonFormField<String>(
                                     value: product,
-                                    decoration: const InputDecoration(
+                                    decoration: _buildModernInputDecoration(
                                       labelText: "Product",
-                                      border: UnderlineInputBorder(),
+                                      icon: Icons.agriculture_rounded,
                                     ),
                                     items: products
                                         .map((p) => DropdownMenuItem<String>(
-                                              value: p["value"],
-                                              child: Text(p["text"]!),
-                                            ))
+                                      value: p["value"],
+                                      child: Text(p["text"]!),
+                                    ))
                                         .toList(),
                                     onChanged: (val) {
                                       setState(() {
                                         product = val;
-                                        machineName = null; // reset machine
-                                        machineNamesFuture =
-                                            null; // reset before fetch
+                                        machineName = null;
+                                        machineNamesFuture = null;
                                       });
                                       if (val != null) {
                                         setState(() {
-                                          machineNamesFuture = LeadService()
-                                              .getMachineNames(val);
+                                          machineNamesFuture =
+                                              LeadService().getMachineNames(val);
                                         });
                                       }
                                     },
                                     validator: (v) =>
-                                        v == null ? "Select product" : null,
+                                    v == null ? "Select product" : null,
                                   );
                                 },
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 20),
 
-                              // Machine Name
+                              // Machine Name Dropdown
                               if (machineNamesFuture != null)
                                 FutureBuilder<List<Map<String, String>>>(
                                   future: machineNamesFuture,
                                   builder: (context, snapshot) {
                                     if (snapshot.connectionState ==
                                         ConnectionState.waiting) {
-                                      return const LinearProgressIndicator();
+                                      return const LinearProgressIndicator(
+                                          color: primaryColor);
                                     }
                                     if (snapshot.hasError) {
                                       return const Text(
@@ -546,43 +637,38 @@ class _LeadsPageState extends State<LeadsPage> {
                                       );
                                     }
                                     final machines = snapshot.data ?? [];
-                                    if (machines.isEmpty) {
-                                      return const Text(
-                                          "No machine names available");
-                                    }
                                     return DropdownButtonFormField<String>(
                                       value: machineName,
-                                      decoration: const InputDecoration(
+                                      decoration: _buildModernInputDecoration(
                                         labelText: "Machine Name",
-                                        border: UnderlineInputBorder(),
+                                        icon: Icons.precision_manufacturing_rounded,
                                       ),
                                       items: machines
                                           .map((m) => DropdownMenuItem<String>(
-                                                value: m["value"],
-                                                child: Text(m["text"]!),
-                                              ))
+                                        value: m["value"],
+                                        child: Text(m["text"]!),
+                                      ))
                                           .toList(),
                                       onChanged: (val) =>
                                           setState(() => machineName = val),
-                                      validator: (v) => v == null
-                                          ? "Select machine name"
-                                          : null,
+                                      validator: (v) =>
+                                      v == null ? "Select machine name" : null,
                                     );
                                   },
                                 )
                               else
-                                const SizedBox(), // safe placeholder
+                                const SizedBox(),
 
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 20),
 
                               // Lead Reminder Date
                               TextFormField(
                                 controller: reminderDateController,
                                 readOnly: true,
-                                decoration: const InputDecoration(
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                                decoration: _buildModernInputDecoration(
                                   labelText: "Lead Reminder Date",
-                                  border: UnderlineInputBorder(),
-                                  suffixIcon: Icon(Icons.calendar_today),
+                                  icon: Icons.calendar_today_rounded,
                                 ),
                                 onTap: () async {
                                   final pickedDate = await showDatePicker(
@@ -590,31 +676,46 @@ class _LeadsPageState extends State<LeadsPage> {
                                     initialDate: DateTime.now(),
                                     firstDate: DateTime(2000),
                                     lastDate: DateTime(2100),
+                                    builder: (context, child) {
+                                      return Theme(
+                                        data: ThemeData.light().copyWith(
+                                          colorScheme: ColorScheme.light(
+                                            primary: primaryColor, // header background color
+                                            onPrimary: Colors.white, // header text color
+                                            onSurface: Colors.black, // body text color
+                                          ),
+                                          textButtonTheme: TextButtonThemeData(
+                                            style: TextButton.styleFrom(
+                                              foregroundColor: primaryColor, // button text color
+                                            ),
+                                          ),
+                                        ),
+                                        child: child!,
+                                      );
+                                    },
                                   );
                                   if (pickedDate != null) {
                                     reminderDateController.text =
-                                        "${pickedDate.toLocal()}".split(' ')[0];
+                                    "${pickedDate.toLocal()}".split(' ')[0];
                                   }
                                 },
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 20),
 
                               // Remarks
                               TextFormField(
                                 controller: remarksController,
-                                decoration: const InputDecoration(
+                                decoration: _buildModernInputDecoration(
                                   labelText: "Remarks",
-                                  border: UnderlineInputBorder(),
+                                  icon: Icons.comment_rounded,
                                 ),
                                 maxLines: 3,
-                                validator: (v) =>
-                                    (v == null || v.trim().isEmpty)
-                                        ? 'Remarks required'
-                                        : null,
+                                validator: (v) => (v == null || v.trim().isEmpty)
+                                    ? 'Remarks required'
+                                    : null,
                               ),
 
-                              const SizedBox(
-                                  height: 80), // keep above fixed button
+                              const SizedBox(height: 20),
                             ],
                           ),
                         ),
@@ -622,49 +723,56 @@ class _LeadsPageState extends State<LeadsPage> {
                     ),
                   ),
 
-                  // ---------- Fixed Submit Button ----------
+                  // ---------- Fixed Submit Button (Trendy Footer) ----------
                   Container(
                     width: double.infinity,
-                    color: Colors.white,
-                    padding: const EdgeInsets.all(16),
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryColor,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      onPressed: () {
-                        if (_formKey.currentState!.validate()) {
-                          // Collect all values into JSON
-                          final Map<String, dynamic> formData = {
-                            "leadId": leadId,
-                            "phoneNumber": phoneNumber,
-                            "farmerName": farmerNameController.text.trim(),
-                            "leadCallStatus": selectedStatus,
-                            "businessCategory": selectedBusinessCategory,
-                            "typeOfPurchase": selectedTypePurchase,
-                            "district": district,
-                            "division": division ?? 0,
-                            "block": block ?? 0,
-                            "village": village ?? 0,
-                            "product": product,
-                            "machineName": machineName ?? 0,
-                            "reminderDate": reminderDateController.text.trim(),
-                            "remarks": remarksController.text.trim(),
-                          };
+                    // Slightly lighter color for the footer area
+                    color: const Color(0xFFF5F7FA),
+                    padding: const EdgeInsets.only(
+                        left: 20, right: 20, top: 10, bottom: 20),
+                    child: SizedBox(
+                      height: 54, // Taller button
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryColor,
+                          elevation: 8,
+                          shadowColor: primaryColor.withOpacity(0.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        onPressed: () {
+                          if (_formKey.currentState!.validate()) {
+                            // Collect all values into JSON
+                            final Map<String, dynamic> formData = {
+                              "leadId": leadId,
+                              "phoneNumber": phoneNumber,
+                              "farmerName": farmerNameController.text.trim(),
+                              "leadCallStatus": selectedStatus,
+                              "businessCategory": selectedBusinessCategory,
+                              "typeOfPurchase": selectedTypePurchase,
+                              "district": district,
+                              "division": division ?? 0,
+                              "block": block ?? 0,
+                              "village": village ?? 0,
+                              "product": product,
+                              "machineName": machineName ?? 0,
+                              "reminderDate": reminderDateController.text.trim(),
+                              "remarks": remarksController.text.trim(),
+                            };
 
-                          // Print / send this JSON
-                          debugPrint("Form JSON: ${jsonEncode(formData)}");
-
-                          // Call your submit function
-                          _onFeedbackSubmit(context, formData);
-                        }
-                      },
-                      child: const Text(
-                        "Submit",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                            // Call your submit function
+                            _onFeedbackSubmit(context, formData);
+                          }
+                        },
+                        child: const Text(
+                          "SUBMIT CALL FEEDBACK",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
@@ -678,7 +786,91 @@ class _LeadsPageState extends State<LeadsPage> {
     );
   }
 
+  // --- New Modal Bottom Sheet for Status Selection (Better UX) ---
+  void _showStatusSelector(BuildContext context, Lead lead) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true, // Allows sheet to use full height if needed
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min, // Fixes potential overflow by minimizing size
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  'Change Status for ${lead.name}',
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const Divider(height: 1),
+              // Use flexible and check if it exceeds a certain height (e.g., 400.0)
+              // Since ListView.builder with shrinkWrap is inside mainAxisSize.min column, it should behave correctly.
+              ListView.builder(
+                shrinkWrap: true,
+                itemCount: statusList.length,
+                physics: const ClampingScrollPhysics(), // Ensures proper scrolling behavior
+                itemBuilder: (context, index) {
+                  final status = statusList[index];
+                  final isSelected = status.name == lead.statusName;
+                  final statusColor = _getStatusColor(status.name);
+                  final statusIcon = _getStatusIcon(status.name);
+
+                  return ListTile(
+                    leading: Icon(statusIcon, color: statusColor),
+                    title: Text(status.name,
+                        style: TextStyle(
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            color: isSelected ? primaryColor : Colors.black)),
+                    trailing: isSelected
+                        ? const Icon(Icons.check_circle, color: Colors.green)
+                        : null,
+                    onTap: () async {
+                      Navigator.pop(context); // Close sheet immediately
+                      if (status.name == lead.statusName) return;
+
+                      final confirm = await confirmStatusChange(status.name);
+                      if (confirm != true) return;
+
+                      final success = await updateLeadStatus(lead.id, status.id);
+
+                      if (success) {
+                        setState(() {
+                          lead.statusName = status.name;
+                          lead.statusId = status.id;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                              content:
+                              Text('Status updated to "${status.name}"')),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Failed to update status')),
+                        );
+                      }
+                    },
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<List<Lead>> fetchLeads() async {
+    // NOTE: Hardcoded URL should be moved to a configuration file or environment
     final res = await http
         .get(Uri.parse('https://crm.vasaantham.com/api/get_leads_by_id/12'));
     if (res.statusCode == 200) {
@@ -689,6 +881,7 @@ class _LeadsPageState extends State<LeadsPage> {
   }
 
   Future<List<LeadStatus>> fetchStatuses() async {
+    // NOTE: Hardcoded URL should be moved to a configuration file or environment
     final res = await http
         .get(Uri.parse('https://crm.vasaantham.com/api/get_all_lead_statuses'));
     if (res.statusCode == 200) {
@@ -703,11 +896,9 @@ class _LeadsPageState extends State<LeadsPage> {
       _isRefreshing = true;
     });
 
-    // Replace these with actual fetch methods
     leadsFuture = fetchLeads();
     statusFuture = fetchStatuses();
 
-    // Wait for both futures to complete
     await Future.wait([leadsFuture, statusFuture]);
 
     setState(() {
@@ -716,13 +907,13 @@ class _LeadsPageState extends State<LeadsPage> {
   }
 
   Future<void> _refresh() async {
-    _loadData(); // reset futures
-    // Wait for both to complete
+    _loadData();
     await Future.wait([leadsFuture, statusFuture]);
-    setState(() {}); // rebuild with new data
+    setState(() {});
   }
 
   Future<bool> updateLeadStatus(String leadId, String statusId) async {
+    // NOTE: Hardcoded URL should be moved to a configuration file or environment
     final res = await http.patch(
       Uri.parse('https://crm.vasaantham.com/api/update_lead_status/$leadId'),
       headers: {'Content-Type': 'application/json'},
@@ -740,41 +931,68 @@ class _LeadsPageState extends State<LeadsPage> {
     return true;
   }
 
-  Future<void> _loadCallLogs(Iterable<CallLogEntry> logs) async {
-    if (!await _requestPermission()) {
-      // setState(() => _loading = false);
-      return;
-    }
-    for (var log in logs) {
-      print('check log -- $log');
-      try {
-        Iterable<CallLogEntry> entries = await CallLog.get();
-        setState(() {
-          _callLogs = removeDuplicateTimestamps(entries.toList());
-          _callLogs
-              .sort((a, b) => (b.timestamp ?? 0).compareTo(a.timestamp ?? 0));
-          // _loading = false;
-          print(_callLogs);
-        });
-      } catch (e) {
-        print('Failed to get call logs: $e');
-        // setState(() => _loading = false);
-      }
+  Future<bool?> confirmStatusChange(String newStatus) {
+    return showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Confirm Status Change'),
+        content: Text('Change status to "$newStatus"?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Confirm')),
+        ],
+      ),
+    );
+  }
+
+  // --- Styling Logic ---
+  Color _getStatusColor(String s) {
+    switch (s.toLowerCase()) {
+      case 'completed':
+        return const Color(0xFF1B5E20); // Darker Green
+      case 'new':
+        return primaryColor; // Primary Blue
+      case 'pending':
+        return const Color(0xFFFF9800); // Yellowish Orange (Requested change)
+      case 'in progress':
+        return const Color(0xFF512DA8); // Deep Purple
+      case 'rejected':
+        return const Color(0xFFB71C1C); // Dark Red
+      case 'accepted':
+        return const Color(0xFF00695C); // Dark Teal
+      case 'maintenance':
+        return const Color(0xFF4E342E); // Dark Brown
+      default:
+        return Colors.grey.shade700;
     }
   }
 
-  List<CallLogEntry> removeDuplicateTimestamps(List<CallLogEntry> calls) {
-    final seenTimestamps = <int>{};
-    return calls.where((call) {
-      final ts = call.timestamp;
-      final isNew = ts != null && !seenTimestamps.contains(ts);
-      if (isNew) seenTimestamps.add(ts!);
-      return isNew;
-    }).toList();
+  IconData _getStatusIcon(String s) {
+    switch (s.toLowerCase()) {
+      case 'completed':
+        return Icons.check_circle_rounded;
+      case 'new':
+        return Icons.star_border_rounded;
+      case 'pending':
+        return Icons.access_time_filled_rounded;
+      case 'in progress':
+        return Icons.rotate_right_rounded;
+      case 'rejected':
+        return Icons.cancel_rounded;
+      case 'accepted':
+        return Icons.thumb_up_alt_rounded;
+      case 'maintenance':
+        return Icons.build_rounded;
+      default:
+        return Icons.help_center_rounded;
+    }
   }
 
   Future<void> makeCall(String phone, String status, String leadId) async {
-    // _showFeedbackPopup(context, leadId, '8902320323');
     if (status.toLowerCase() == 'completed') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cannot call a completed lead')),
@@ -800,431 +1018,284 @@ class _LeadsPageState extends State<LeadsPage> {
 
     if (confirm != true) return;
 
-    // set the current lead and number before dialing
     _currentCallLeadId = leadId;
 
     await FlutterDirectCall.makeDirectCall(phone);
   }
-
-  Future<bool?> confirmStatusChange(String newStatus) {
-    return showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Confirm Status Change'),
-        content: Text('Change status to "$newStatus"?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Confirm')),
-        ],
-      ),
-    );
-  }
-
-  Color _getStatusColor(String s) {
-    switch (s.toLowerCase()) {
-      case 'completed':
-        return Colors.green;
-      case 'new':
-        return Colors.blue;
-      case 'pending':
-        return Colors.orange;
-      case 'in progress':
-        return Colors.deepPurple;
-      case 'rejected':
-        return Colors.red;
-      case 'accepted':
-        return Colors.teal;
-      case 'maintenance':
-        return Colors.brown;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getStatusIcon(String s) {
-    switch (s.toLowerCase()) {
-      case 'completed':
-        return Icons.check_circle;
-      case 'new':
-        return Icons.fiber_new_outlined;
-      case 'pending':
-        return Icons.hourglass_top;
-      case 'in progress':
-        return Icons.autorenew;
-      case 'rejected':
-        return Icons.cancel;
-      case 'accepted':
-        return Icons.thumb_up;
-      case 'maintenance':
-        return Icons.build;
-      default:
-        return Icons.help_outline;
-    }
-  }
+  // ------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
+    // Get the standard height of the AppBar
+    final double appBarHeight = kToolbarHeight + MediaQuery.of(context).padding.top;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Leads',
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(30),
-              onTap: () {
-                // TODO: Add your add lead screen navigation here
-                print('Add lead button tapped');
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => AddLeadScreen(
-                            leadId: '--', // Pass the lead ID to AddLeadScreen
+      // CRITICAL: Extends the body under the AppBar for the glassy effect
+      extendBodyBehindAppBar: true,
+
+      // Glassy Header (AppBar) Implementation
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(appBarHeight),
+        child: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), // The Blur effect
+            child: AppBar(
+              title: const Text('Leads',
+                  style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black)), // Visible title color
+              actions: [
+                // Add Lead Icon
+                IconButton(
+                  icon: const Icon(Icons.add_rounded,
+                      size: 28, color: primaryColor), // Clearly visible icon color
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const AddLeadScreen(
+                            leadId: '--',
                           )),
-                );
-              },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: primaryColor,
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(color: primaryColor),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black
-                          .withOpacity(0.2), // shadow color with opacity
-                      spreadRadius: 1, // how much the shadow spreads
-                      blurRadius: 2, // blur effect
-                      offset: const Offset(0, 1), // shadow position (x, y)
-                    ),
-                  ],
+                    );
+                  },
+                  tooltip: 'Add New Lead',
                 ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.add, color: Colors.white, size: 20),
-                    SizedBox(width: 6),
-                    Text(
-                      'Add',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                const SizedBox(width: 8),
+              ],
+              // Semi-transparent background for the glassy look
+              backgroundColor: Colors.white.withOpacity(0.6),
+              elevation: 0,
+              foregroundColor: Colors.black,
             ),
           ),
-        ],
-        backgroundColor: Colors.white,
-        elevation: 1,
-        foregroundColor: Colors.black,
-        // backgroundColor: const Color(0xFF4169E1), // Matches your blue theme
+        ),
       ),
-      body: FutureBuilder<List<dynamic>>(
-        future: Future.wait([leadsFuture, statusFuture]),
-        builder: (c, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError) {
-            return Center(child: Text('Error: ${snap.error}'));
-          }
 
-          final leads = snap.data![0] as List<Lead>;
-          statusList = snap.data![1] as List<LeadStatus>;
+      // Body content, pushed down by the AppBar height
+      body: Padding(
+        padding: EdgeInsets.only(top: appBarHeight),
+        child: FutureBuilder<List<dynamic>>(
+          future: Future.wait([leadsFuture, statusFuture]),
+          builder: (c, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const Center(
+                  child: CircularProgressIndicator(color: primaryColor));
+            }
+            if (snap.hasError) {
+              return Center(
+                  child: Text('Error: ${snap.error}',
+                      style: TextStyle(color: Colors.red.shade700)));
+            }
 
-          if (leads.isEmpty) return const Center(child: Text('No leads found'));
+            final leads = snap.data![0] as List<Lead>;
+            statusList = snap.data![1] as List<LeadStatus>;
 
-          return RefreshIndicator(
-              onRefresh: _refresh,
-              child: _isRefreshing
-                  ? Center(child: CircularProgressIndicator())
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: leads.length,
-                      separatorBuilder: (i, _) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final lead = leads[index];
-                        final color = _getStatusColor(lead.statusName);
+            if (leads.isEmpty)
+              return const Center(
+                  child: Text('No leads found',
+                      style: TextStyle(fontSize: 16, color: Colors.black54)));
 
-                        return Card(
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                          elevation: 3,
-                          child: Stack(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // Avatar Icon
-                                    Container(
-                                      width: 50,
-                                      height: 50,
-                                      decoration: const BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            Color(0xFF4169E1),
-                                            Color(0xFF4A90E2)
-                                          ],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
+            return RefreshIndicator(
+                onRefresh: _refresh,
+                color: primaryColor,
+                child: _isRefreshing
+                    ? const Center(
+                    child: CircularProgressIndicator(color: primaryColor))
+                    : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: leads.length,
+                  separatorBuilder: (i, _) =>
+                  const SizedBox(height: 16), // Increased spacing
+                  itemBuilder: (context, index) {
+                    final lead = leads[index];
+                    final statusColor = _getStatusColor(lead.statusName);
+                    final statusIcon = _getStatusIcon(lead.statusName);
+
+                    return Card(
+                      // Requested Card Background Color: White
+                      color: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius:
+                          BorderRadius.circular(cardRadius)),
+                      elevation: 4, // Slightly higher elevation
+                      clipBehavior: Clip.antiAlias, // For clean borders
+
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Avatar Icon
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: primaryColor.withOpacity(0.1),
+                                    border: Border.all(
+                                        color: primaryColor, width: 2),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    lead.name.isNotEmpty
+                                        ? lead.name[0].toUpperCase()
+                                        : 'L',
+                                    style: TextStyle(
+                                        color: primaryColor,
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+
+                                // Content (Name & Phone)
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                    children: [
+                                      // Name
+                                      Text(
+                                        lead.name,
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w700,
+                                          color: primaryColor,
                                         ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      alignment: Alignment.center,
-                                      child: const Icon(Icons.person,
-                                          color: Colors.white, size: 28),
-                                    ),
-                                    const SizedBox(width: 16),
+                                      const SizedBox(height: 4),
 
-                                    // Content
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                      // Phone Row
+                                      Row(
                                         children: [
-                                          // Name
+                                          const Icon(
+                                              Icons.phone_android_rounded,
+                                              size: 16,
+                                              color: Colors.black54),
+                                          const SizedBox(width: 8),
                                           Text(
-                                            lead.name,
+                                            lead.phoneNumber,
                                             style: const TextStyle(
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFF4169E1),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 6),
-
-                                          // Phone Row
-                                          Row(
-                                            children: [
-                                              const Icon(Icons.phone,
-                                                  size: 18,
-                                                  color: Colors.black54),
-                                              const SizedBox(width: 6),
-                                              Expanded(
-                                                child: Text(
-                                                  lead.phoneNumber,
-                                                  style: const TextStyle(
-                                                      fontSize: 14),
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 12),
-
-                                          // Dropdown + Call button in Wrap
-                                          Wrap(
-                                            spacing: 10,
-                                            runSpacing: 12,
-                                            children: [
-                                              // Status Dropdown
-                                              LayoutBuilder(
-                                                builder:
-                                                    (context, constraints) {
-                                                  return SizedBox(
-                                                    width: constraints.maxWidth,
-                                                    child: Container(
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          horizontal: 12,
-                                                          vertical: 6),
-                                                      decoration: BoxDecoration(
-                                                        color: _getStatusColor(
-                                                                lead.statusName)
-                                                            .withOpacity(0.15),
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(20),
-                                                      ),
-                                                      child:
-                                                          DropdownButtonHideUnderline(
-                                                        child: DropdownButton<
-                                                            String>(
-                                                          value:
-                                                              lead.statusName,
-                                                          isDense: true,
-                                                          isExpanded: true,
-                                                          icon: const SizedBox
-                                                              .shrink(), // Hide dropdown icon
-                                                          items: statusList
-                                                              .map((status) {
-                                                            return DropdownMenuItem(
-                                                              value:
-                                                                  status.name,
-                                                              child: Row(
-                                                                children: [
-                                                                  Icon(
-                                                                    _getStatusIcon(
-                                                                        status
-                                                                            .name),
-                                                                    size: 16,
-                                                                    color: _getStatusColor(
-                                                                        status
-                                                                            .name),
-                                                                  ),
-                                                                  const SizedBox(
-                                                                      width: 6),
-                                                                  Text(
-                                                                    status.name,
-                                                                    style:
-                                                                        TextStyle(
-                                                                      color: _getStatusColor(
-                                                                          status
-                                                                              .name),
-                                                                      fontWeight:
-                                                                          FontWeight
-                                                                              .w600,
-                                                                    ),
-                                                                  ),
-                                                                ],
-                                                              ),
-                                                            );
-                                                          }).toList(),
-                                                          onChanged:
-                                                              (selected) async {
-                                                            if (selected ==
-                                                                    null ||
-                                                                selected ==
-                                                                    lead.statusName)
-                                                              return;
-                                                            final confirm =
-                                                                await confirmStatusChange(
-                                                                    selected);
-                                                            if (confirm != true)
-                                                              return;
-
-                                                            final statusObj =
-                                                                statusList
-                                                                    .firstWhere((s) =>
-                                                                        s.name ==
-                                                                        selected);
-                                                            final success =
-                                                                await updateLeadStatus(
-                                                                    lead.id,
-                                                                    statusObj
-                                                                        .id);
-
-                                                            if (success) {
-                                                              setState(() {
-                                                                lead.statusName =
-                                                                    selected;
-                                                                lead.statusId =
-                                                                    statusObj
-                                                                        .id;
-                                                              });
-                                                              ScaffoldMessenger
-                                                                      .of(context)
-                                                                  .showSnackBar(
-                                                                SnackBar(
-                                                                    content: Text(
-                                                                        'Status updated to "$selected"')),
-                                                              );
-                                                            } else {
-                                                              ScaffoldMessenger
-                                                                      .of(context)
-                                                                  .showSnackBar(
-                                                                const SnackBar(
-                                                                    content: Text(
-                                                                        'Failed to update status')),
-                                                              );
-                                                            }
-                                                          },
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  );
-                                                },
-                                              ),
-
-                                              // Call Button
-                                              LayoutBuilder(
-                                                builder:
-                                                    (context, constraints) {
-                                                  return SizedBox(
-                                                    width: constraints.maxWidth,
-                                                    child: ElevatedButton.icon(
-                                                      onPressed: () => makeCall(
-                                                          lead.phoneNumber,
-                                                          lead.statusName,
-                                                          lead.id),
-                                                      icon: const Icon(
-                                                          Icons.call),
-                                                      label: const Text('Call'),
-                                                      style: ElevatedButton
-                                                          .styleFrom(
-                                                        backgroundColor:
-                                                            Colors.green,
-                                                        foregroundColor:
-                                                            Colors.white,
-                                                        fixedSize: const Size
-                                                            .fromHeight(38),
-                                                        shape:
-                                                            RoundedRectangleBorder(
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(30),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  );
-                                                },
-                                              ),
-                                            ],
+                                                fontSize: 14,
+                                                color: Colors.black87),
                                           ),
                                         ],
                                       ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 16),
+                            const Divider(
+                                height: 1, color: Colors.black12),
+                            const SizedBox(height: 16),
+
+                            // Status Dropdown and Action Buttons
+                            Row(
+                              mainAxisAlignment:
+                              MainAxisAlignment.spaceBetween,
+                              children: [
+                                // Status Chip (Tap target to open bottom sheet)
+                                Expanded(
+                                  child: InkWell(
+                                    onTap: () =>
+                                        _showStatusSelector(context, lead),
+                                    borderRadius:
+                                    BorderRadius.circular(10),
+                                    child: StatusChip(
+                                      color: statusColor,
+                                      icon: statusIcon,
+                                      text: lead.statusName,
+                                    ),
+                                  ),
+                                ),
+
+                                const SizedBox(width: 12), // Compact spacing
+
+                                // Action Icons
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    // 1. Call Button
+                                    IconButton(
+                                      icon: const Icon(Icons.call_rounded,
+                                          color: Colors.green, size: 24),
+                                      onPressed: () => makeCall(
+                                          lead.phoneNumber,
+                                          lead.statusName,
+                                          lead.id),
+                                      tooltip: 'Call Lead',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                    ),
+
+                                    // 2. Edit Button
+                                    IconButton(
+                                      icon: const Icon(Icons.edit_rounded,
+                                          color: secondaryColor, size: 24),
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                AddLeadScreen(
+                                                  leadId: lead.id,
+                                                ),
+                                          ),
+                                        );
+                                      },
+                                      tooltip: 'Edit Lead',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                    ),
+
+                                    // 3. View Button
+                                    IconButton(
+                                      icon: const Icon(
+                                          Icons.visibility_rounded,
+                                          color: primaryColor,
+                                          size: 24),
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                LeadDetailsPage(
+                                                  leadId: lead.id,
+                                                ),
+                                          ),
+                                        );
+                                      },
+                                      tooltip: 'View Details',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
                                     ),
                                   ],
                                 ),
-                              ),
-
-                              // Edit Icon in the top-right corner
-                              Positioned(
-                                top: 4,
-                                right: 4,
-                                child: IconButton(
-                                  icon: Icon(
-                                    Icons.edit,
-                                    color: primaryColor,
-                                    size: 20,
-                                  ),
-                                  onPressed: () {
-                                    // Handle the edit action
-                                    print("Edit icon pressed");
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => AddLeadScreen(
-                                          leadId: lead
-                                              .id, // Pass the lead ID to AddLeadScreen
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ));
-        },
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ));
+          },
+        ),
       ),
     );
   }
 }
+
+// --- Lead Data Classes (Unchanged for API functionality) ---
 
 class Lead {
   String phoneNumber;

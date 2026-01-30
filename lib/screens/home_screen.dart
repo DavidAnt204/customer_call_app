@@ -21,7 +21,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
-  final List<String> _tabTitles = ['Dashboard','Recent', '', 'Profile'];
+  final List<String> _tabTitles = ['Dashboard','', '', 'Profile'];
   late final List<Widget> _pages;
 
   @override
@@ -52,17 +52,18 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _selectedIndex == 1
-          ? AppBar(
-              title: Text(
-                _tabTitles[_selectedIndex],
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-              backgroundColor: Colors.white,
-              elevation: 1,
-              foregroundColor: Colors.black,
-            )
-          : null,
+      // appBar:
+      // _selectedIndex == 1
+      //     ? AppBar(
+      //         title: Text(
+      //           _tabTitles[_selectedIndex],
+      //           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+      //         ),
+      //         backgroundColor: Colors.white,
+      //         elevation: 1,
+      //         foregroundColor: Colors.black,
+      //       )
+      //     : null,
       body: SafeArea(child: _pages[_selectedIndex]),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
