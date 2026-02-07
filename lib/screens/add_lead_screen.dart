@@ -88,9 +88,9 @@ class _AddLeadScreenState extends State<AddLeadScreen> {
       setState(() {
         _leadData = leadResponse;
         _nameController.text = _leadData?['name'] ?? '';
-        _phoneController.text = _leadData?['phonenumber'] ?? '';
-        _selectedSource = _leadData?['source']?.toString();
-        _selectedStatus = _leadData?['status']?.toString();
+        _phoneController.text = _leadData?['phone'] ?? '';
+        _selectedSource = _leadData?['source'] ?? 0;
+        _selectedStatus = _leadData?['status_id'] ?? 0;
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

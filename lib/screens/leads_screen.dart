@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ui'; // Required for BackdropFilter
 import 'package:call_log/call_log.dart';
+import 'package:customer_call/screens/task_list_screen.dart';
 import 'package:customer_call/screens/view_lead_screen.dart' hide LeadService;
 import 'package:flutter/material.dart';
 import 'package:flutter_direct_call_plus/flutter_direct_call.dart';
@@ -12,6 +13,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../services/api_services.dart';
 import '../services/helpers.dart';
 import 'add_lead_screen.dart';
+import 'create_task_screen.dart';
 
 // --- Color and Style Constants (Trendy/M3 Look) ---
 const Color primaryColor = Color(0xFF4169E1); // A vibrant Royal Blue
@@ -1188,6 +1190,63 @@ class _LeadsPageState extends State<LeadsPage> {
                                         ],
                                       ),
                                     ],
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
+                                      // TODO: Navigate to Add Task screen
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              AddTaskScreen(
+                                                leadId: int.parse(lead.id),
+                                              ),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(Icons.add_task_rounded, size: 18),
+                                    label: const Text('Add Task'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: primaryColor,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 10),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      elevation: 0,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      // TODO: Navigate to Task List screen
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => TaskListScreen(leadId: int.parse(lead.id)),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(Icons.list_alt_rounded, size: 18),
+                                    label: const Text('Task List'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: primaryColor,
+                                      side: const BorderSide(color: primaryColor),
+                                      padding: const EdgeInsets.symmetric(vertical: 10),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
